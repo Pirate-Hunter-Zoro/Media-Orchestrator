@@ -455,10 +455,17 @@ An e-book plan looks like:
    once filed 100 Years Quest as the original Fairy Tail's Season 1 and duplicated
    the parent's first 25 episodes. Because Jellyfin's scraper title-matches, giving
    the folder the right name is **not enough** — you MUST look up and set the
-   sequel's own `tmdb_id` AND `tvdb_id` (TheTVDB id — many anime libraries scrape
-   via TheTVDB first, where the collision is worst) so the engine pins both into
-   `tvshow.nfo` and Jellyfin identifies the exact series instead of merging it onto
-   the parent. Distinguish this from the *opposite* case — a release that is
+   sequel's own `tmdb_id` — the id that decides which series this is — and its
+   `tvdb_id` **only when TMDB's own record for that entry carries one** (so the
+   engine can pin the verified pair into `tvshow.nfo` and Jellyfin identifies the
+   exact series instead of merging it onto the parent). The harness fetches TMDB's
+   `/external_ids` for your `tmdb_id` and corroborates the tvdb id against it: an
+   id that names a different show, or that TMDB does not record at all, is
+   **stripped and logged**, because a tvdb id two series share makes Jellyfin
+   collapse their seasons and episodes into one list. Never carry a tvdb id over
+   from the parent, a sibling, or another row of the library digest — if TMDB
+   does not map one for your `tmdb_id`, omit `tvdb_id` rather than guess.
+   Distinguish this from the *opposite* case — a release that is
    genuinely a later cour/season of an existing entry (e.g. the Fairy Tail Final
    Series is Season 8 of the umbrella TMDB entry 46261) belongs *under* that entry;
    the test is always "does the provider carry this as a separate series id?"
@@ -662,13 +669,16 @@ Write to the plan path given in the runtime context. Shape:
                                      // film id for a movie, where it is REQUIRED.
                                      // In a multi-movie or mixed plan, omit this
                                      // and put each film's id in its file's tmdb_id.
-  "tvdb_id": 410031,                 // TheTVDB series id — OPTIONAL but strongly
-                                     // recommended for anime and for any sequel/
-                                     // spin-off (see the merge warning below). Many
-                                     // libraries scrape TV via TheTVDB first, and
-                                     // the TMDB id alone will NOT stop TheTVDB's
-                                     // agent from title-matching a sequel onto its
-                                     // parent. The engine pins it into tvshow.nfo.
+  "tvdb_id": 410031,                 // TheTVDB series id — OPTIONAL. The engine
+                                     // verifies it against TMDB's `/external_ids`
+                                     // for the tmdb_id above and pins it into
+                                     // tvshow.nfo ONLY when TMDB records the same
+                                     // id. An id TMDB records differently, or
+                                     // does not record at all, is stripped and
+                                     // logged — two shows sharing one tvdb id
+                                     // merge their seasons and episodes in
+                                     // Jellyfin. Never copy a tvdb id from
+                                     // another show or from a sequel's parent.
   "existing_match": true,            // did you match a pre-existing library folder?
   "reasoning": "one-paragraph summary of the calls you made",
   "files": [

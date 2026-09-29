@@ -1285,7 +1285,12 @@ def verify_provider_ids(plan):
         years are known, because romaji-vs-English titles share no words and
         are the ordinary case (Shingeki no Kyojin / Attack on Titan);
       * a tvdb id is checked against TMDB's own `external_ids` for the verified
-        tmdb id; when the tmdb id was stripped the tvdb id came from the same
+        tmdb id; a different id is a mismatch, and **no id at all makes the
+        claimed one uncorroborated** -- stripped too, because an id TMDB does not
+        map for the series collides with whatever series does own it (Jellyfin
+        keys a series' presentation on its provider ids, so two series sharing
+        one tvdb id merge their seasons and episodes);
+      * when the tmdb id was stripped the tvdb id came from the same
         wrong lookup and is stripped with it;
       * no key, no answer, a transport error -> fail open, id kept.
 
@@ -1335,11 +1340,27 @@ def verify_provider_ids(plan):
             plan.pop("tmdb_id", None)
             plan.pop("tvdb_id", None)     # same wrong lookup produced it
             ident = None
-    if plan.get("tvdb_id") and ident and ident.get("tvdb_id"):
-        if str(plan["tvdb_id"]) != str(ident["tvdb_id"]):
+    if plan.get("tvdb_id") and ident:
+        theirs = ident.get("tvdb_id")
+        if not theirs:
+            # TMDB records NO tvdb id for the verified tmdb id. The claimed id
+            # cannot be corroborated by the provider the harness checks against,
+            # and an uncorroborated id is exactly how two shows merge: the 2025
+            # revival *The Wonderfully Weird World of Gumball* was pinned with the
+            # 2011 *The Amazing World of Gumball*'s `tvdb_id 248482`, Jellyfin
+            # built ONE PresentationUniqueKey (`248482-en-…`) for both series, and
+            # each show listed the other's seasons and episodes. An id TMDB cannot
+            # map is not evidence; strip it. (A transport error leaves `ident`
+            # None and still fails open below.)
+            reasons.append(
+                f"tvdb_id {plan['tvdb_id']} stripped: TMDB records no TVDB id "
+                f"for tmdb_id {plan.get('tmdb_id')}, so the id is uncorroborated "
+                f"and may collide with another series in Jellyfin")
+            plan.pop("tvdb_id", None)
+        elif str(plan["tvdb_id"]) != str(theirs):
             reasons.append(
                 f"tvdb_id {plan['tvdb_id']} stripped: TMDB records "
-                f"{ident['tvdb_id']} for the same series")
+                f"{theirs} for the same series")
             plan.pop("tvdb_id", None)
     if reasons:
         plan.setdefault("_id_rejections", []).extend(reasons)

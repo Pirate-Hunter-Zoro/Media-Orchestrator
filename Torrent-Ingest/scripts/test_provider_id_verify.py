@@ -11,6 +11,11 @@ fault survived every later Jellyfin refresh.
 This pins `library.verify_provider_ids` in both directions:
   * a contradicted tmdb id is STRIPPED (and a tvdb id from the same wrong lookup with it);
   * a tvdb id that disagrees with TMDB's own `external_ids` is stripped alone;
+  * a tvdb id TMDB does NOT record at all is stripped too -- uncorroborated is
+    not evidence, and a shared tvdb id merges two series in Jellyfin (2026-09-29,
+    The Amazing World of Gumball (2011) vs The Wonderfully Weird World of
+    Gumball (2025): one PresentationUniqueKey `248482-en-...`, each series
+    listing the other's episodes);
   * a 404 is a mismatch; a transport error keeps the id (fail open);
   * a romaji-vs-English title with agreeing years is NOT a false positive.
 
@@ -117,6 +122,43 @@ with_ident(TOO_CUTE, lambda: library.verify_provider_ids(p))
 before = list(p["_id_rejections"])
 with_ident(TOO_CUTE, lambda: library.verify_provider_ids(p))
 check("stripping is idempotent", p["_id_rejections"] == before)
+
+# 10. TMDB records NO tvdb id: the claimed id is uncorroborated -> stripped,
+#     tmdb kept. The 2025 revival (TMDB 291904 maps no tvdb id) was pinned with
+#     the 2011 series' `tvdb_id 248482`; Jellyfin built one presentation key for
+#     both series and each listed the other's episodes.
+NO_TVDB = {"name": "The Wonderfully Weird World of Gumball",
+           "original_name": "The Wonderfully Weird World of Gumball",
+           "year": 2025, "first_air_date": "2025-10-06", "tvdb_id": None}
+p = plan(title="The Wonderfully Weird World of Gumball", year=2025,
+         tmdb_id=291904, tvdb_id="248482")
+reasons = with_ident(NO_TVDB, lambda: library.verify_provider_ids(p))
+check("uncorroborated tvdb id is stripped, tmdb kept",
+      p.get("tmdb_id") == 291904 and "tvdb_id" not in p)
+check("the strip names the provider's own answer",
+      reasons and "records no TVDB id" in p["_id_rejections"][0])
+
+# 11. A plan with no tvdb id and a verified tmdb id changes nothing.
+p = plan()
+p.pop("tvdb_id")
+with_ident(IDENT, lambda: library.verify_provider_ids(p))
+check("no tvdb id claimed -> nothing to strip",
+      p.get("tmdb_id") == 83135 and not p.get("_id_rejections"))
+
+# 12. No tmdb id to verify against (ident can't be fetched) -> fail open.
+p = plan(tvdb_id="325542")
+p.pop("tmdb_id")
+with_ident(IDENT, lambda: library.verify_provider_ids(p))
+check("tvdb-only plan is left alone (nothing to verify against)",
+      p.get("tvdb_id") == "325542" and not p.get("_id_rejections"))
+
+# 13. Idempotent under the new rule too.
+p = plan(title="The Wonderfully Weird World of Gumball", year=2025,
+         tmdb_id=291904, tvdb_id="248482")
+with_ident(NO_TVDB, lambda: library.verify_provider_ids(p))
+before = list(p["_id_rejections"])
+with_ident(NO_TVDB, lambda: library.verify_provider_ids(p))
+check("uncorroborated strip is idempotent", p["_id_rejections"] == before)
 
 print()
 if failures:

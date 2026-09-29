@@ -203,25 +203,132 @@ code cites these files by section number.
 
 ---
 
-## 6. State, verified 2026-09-20 08:00 CDT
+## 6. State, updated 2026-09-29 (the five-fault verification date remains 2026-09-20)
 
-Rows marked **measured** were verified this session (the owner's five, §10.0).
+Rows marked **measured** were verified in the session that last touched them.
 
 | | |
 |---|---|
-| `verify_fleet.sh` | **ALL CHECKS PASSED**, **69 blocking checks** (2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
-| `fleet_doctor` / `fleet_health` | not re-run this session; §10.8 is the acceptance list |
+| `verify_fleet.sh` | **ALL CHECKS PASSED**, **69 blocking checks** (2026-09-29: `test_provider_id_verify.py` and `test_series_identity_heal.py` extended with the shared/uncorroborated-tvdb-id rules — no new check file. 2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
+| `fleet_doctor` / `fleet_health` | re-run 2026-09-29 05:54: `pass complete: 0 finding(s)` / `all clear` |
 | `media_doctor` | series-level identity + title art are now scanned (`series_identity_stale`/`series_art_stale`/`episode_slot_missing`); **TZ (2019) repaired live** — folder.jpg `965f20be…`, landscape.jpg `ec122588…` (neither Too Cute hash), tvshow.nfo `premiered 2019-04-01`, `tvdbid 358915`, `enddate 2020-06-25`, item locked, 2 seasons / 20 indexed episodes / no ghost season (§10.3). **2026-09-26 evening:** an episode image whose provider-best answer is already applied (or absent) is refused per image for 30 d (`art_no_still` `{"ts","url","reason"}`, `_art_next_action`, transport failures never remembered) — the DW (1963) S04E16–E18 loop ended (scoped passes now `0 show(s) flagged`); the stuck counters persist (report written before the state save) so a genuinely unfixable `[auto]` line is demoted to NEEDS REVIEW; the AI escalation postcondition measures only the episodes the run was handed |
 | Repo | one monorepo at `~/Developer/Media-Orchestrator`; the 2026-09-23 session added `ac1c37a` (Smurfs re-fetch skeleton fix, deployed 21:49 via restart of torrentingest 49948 / directingest 49957 / driveingest 49969), plus HANDOFF/commit follow-ups through `1b9cfc9`. The 2026-09-24 session added `48f9fd9` (a private trackerless `.torrent` is refused at registration — see the shipped section), deployed 05:47 via restart of torrentingest 72073 / directingest 72081 / driveingest 72094; that restart also put `bde8d71` (a log line) live on those three. The 2026-09-24 **evening** session added `4202bb3` (the show summary counts evicted episodes; a proven collision retries instead of parking the pack — see the shipped section), deployed 21:37:41 via restart of torrentingest 88328 / directingest 88336 / driveingest 88349. On top of the stall fix `c9fd3aa` and the 2026-09-21/22 commits through `81d07d7` |
 | Stall policy | **one 24h deadline, partial bytes kept — shipped `c9fd3aa`, deployed 2026-09-23 20:08 CDT.** `_abandon_stalled` no longer reads `availability < 1` as "no complete copy in the swarm" (it is a connected-peers fact and reads < 1 during every stall); `STALL_ABANDON_NO_COMPLETE_SEC` is gone; an abandon calls `qbt.remove(delete_files=False)` so a re-drop resumes. The four Bob's Burgers packs the owner moved back are downloading again (S02 27%, S06 10.8%, S01 stalled with 4 complete peers known, S03 parked between waves) |
-| Jellyfin | 313 series, 20,052 episodes, 448 movies (last counted 2026-09-19) |
+| Jellyfin | 323 series (measured 2026-09-29); 20,052 episodes, 448 movies (last counted 2026-09-19). The 2011/2025 Gumball series are separated and re-keyed (see the top shipped section) |
 | Mount | **One Piece, session 2 (2026-09-20 evening):** the franchise layout is live — `Manga/One Piece/One Piece/` (189 files) and `Manga/One Piece/Ace's Story/` (2), the old flat master and `One Piece - Ace's Story/` gone. 12 junk chapters purged (covered repeats c1080/1088/1098/1112/1133, the six bare `cNNNN.cbz` the old mislabel repair created, the nested `c1176` duplicate); 5 One Piece chapters misfiled into Jujutsu Kaisen purged as covered (JJK ends at 272 chapters, One Piece v108-v111 own them). Sessions' older rows (§10.0 rows 1–3) remain true. |
 | `library.db` | colour-aware comic identity is live (`item_key` includes `colored`; no `MAX(colored)`). The One Piece renames recorded `cNNNN` chapter rows and superseded the old volume rows; every purge's DB mirror runs via `dbhook.record_purge` from the reconciler/reaper |
 | YacReader | open (Comics), hidden, 30-min self-update. The migration moved 191 files, so the index is catching up; `yacreader_rescan.py --apply` was run and the supervisor refreshes it. Re-check `--files` after the next update |
-| In flight | The reaper drains (`reap.py` PID 6539), now also carrying the 32 superseded Gumball AMZN paths. **2026-09-26: `failed/` was emptied** — the SA89 Gumball pack (`532D8E71…`, 15 files carried), Bob's Burgers S01 (`5FDDCE76…`, 70% kept and now never abandoned once it has progress) and BoJack Horseman (`BB87D07A…`, its two UNFILED S02 files re-fetch) went back to the watch root and are resuming; the AMZN S01 duplicate was superseded by `pack_conflict` and its record REFUSED. The Simpsons (§15.4) and the other §15 acceptance waves are unchanged. |
+| In flight | **2026-09-29:** the reaper drains (`reap.py` PID 1446); `queued/` and `failed/` are empty. Seven chunked packs are **100% downloaded** in qBittorrent (`stoppedUP`/`stalledUP`) and cycling through the serial identify chain: the SA89 Gumball (`532d8e71…`), The Simpsons (`1d9098aa…`), South Park w284 (in an `ai_runner` at session end), Friends (`1a6558e5…`), Family Guy (`705febda…`), American Dad (`06dd53e1…`), SpongeBob (`86b44512…`, 451/456 filed); plus the two One Pace singles `downloaded` awaiting a provider. `identify_capacity.py --probe` says mistral/nvidia/openrouter can serve (cloudflare/gemini capped) — capacity, not a deadlock. |
 | Parked re-drops | **§15's seams shipped 2026-09-25** (HANDOFF top section). American Dad's wrong-slot S04E06 and Doctor Who's S00E04 collision were repaired through `scripts/repair_slots.py`; after the deploy the three sources were moved out of `failed/` back to the watch root — Family Guy `705febda…`, Friends `1a6558e5…`, and American Dad `06dd53e1…` from its `state/torrent_sources/` mirror — each resuming from its `chunk_done`. The Simpsons is separately recovering (§15.4). |
-| Open work | **§15 is closed except the live acceptance checks**: the Simpsons wave/terminal confirmation (§15.4), and the three re-dropped packs completing their waves on the fixed code (Family Guy's S07E07 alternate, Friends' 32 Featurettes, American Dad's S10E06). Toriko: 0 blank plots. The free-AI upgrade (§10.10) is implemented; the §15.1–15.3 seams are its last measured gaps and are now shipped. |
+| Open work | **§15 is closed except the live acceptance checks**: the Simpsons wave/terminal confirmation (§15.4), and the three re-dropped packs completing their waves on the fixed code (Family Guy's S07E07 alternate, Friends' 32 Featurettes, American Dad's S10E06). Toriko: 0 blank plots. The free-AI upgrade (§10.10) is implemented; the §15.1–15.3 seams are its last measured gaps and are now shipped. **2026-09-29: the Gumball cross-series mixup is fixed and guarded** (top shipped section) — the next session should confirm both Gumball shows stay separate after the next SA89 wave files and after any Jellyfin re-scrape. |
 | Pending after reboot | §12: rename close-out verified done; **rotation (item 6) CLOSED by owner decision 2026-09-23 — not doing it** |
+
+### Shipped 2026-09-29 — a shared TVDB id is not an identity: the two Gumball shows separate, and uncorroborated ids stop at the door
+
+**The owner's report.** *The Amazing World of Gumball* (2011) and *The Wonderfully Weird
+World of Gumball* (2025) are two shows and were mixed up: in Jellyfin **each series listed
+the same 174 episodes** — seasons 1-6 of the 2011 show and both seasons of the 2025 revival
+under both names. Also reported: several torrents sitting in `ingesting/` "for a while".
+
+**Root cause (measured, both halves).**
+1. Every show's `tvshow.nfo` is written from the plan's provider ids, and
+   `library.verify_provider_ids` only examined a tvdb id when TMDB *recorded one*
+   (`if plan.get("tvdb_id") and ident and ident.get("tvdb_id")`). TMDB 291904
+   (*The Wonderfully Weird World of Gumball*, the 2025 revival) maps **no TVDB id** in
+   `/external_ids`; the plan that created the folder (`f6e6b75a…`, the AMZN "S07" pack,
+   29 files, 2026-09-22) pinned `tvdb_id 248482` — the 2011 show's — and the two later
+   proper packs (`7f5c9cd3…`, `7bf09600…`) inherited it.
+2. Jellyfin keys a series' presentation on its provider ids. Both items answered
+   `Tvdb 248482`, so both got the **same** `PresentationUniqueKey`
+   (`248482-en-a656b907eb3a73532e40e44b968d0225` in `jellyfin.db`) and Jellyfin merged
+   their seasons/episodes: before the repair `/Shows/{id}/Episodes` reported 174 items
+   each, with Amazing holding 134 of its own + 37 of the 2025 show and the 2025 show's
+   list routing back through the shared key. Jellyfin has **no TheTVDB provider**
+   installed (only TMDb/OMDb), so the id had no metadata role at all — it existed only to
+   collide.
+
+**The fix, computed, no title or id hard-coded.**
+1. **`library.verify_provider_ids`** — a tvdb id that TMDB records differently **or that
+   TMDB does not record at all** is stripped at plan time, with the reason appended to
+   `plan["_id_rejections"]` (logged by `identify`). The trigger is TMDB's own
+   `/external_ids` for the plan's `tmdb_id`; a transport error still fails open (id kept),
+   and a plan with no tmdb id has nothing to verify against (left alone).
+2. **`media_doctor._series_identity_problem(..., tvdb_owners=)`** — a computed
+   cross-series collision trigger. `run_once` builds `tvdb id -> [series pinning it]`
+   from Jellyfin's own ProviderIds (the field the merge actually keys on) every pass; a
+   show whose claimed tvdb id (nfo **or** Jellyfin) is pinned by another series **and** is
+   not corroborated by its own verified TMDB identity is flagged `series_identity_stale`.
+   The existing repair re-matches the item to Tmdb only, locks identity, rewrites
+   `tvshow.nfo` **without** the disowned tag (`_drop_xml_tag`/`_drop_uniqueid`, new —
+   `_set_xml_tag(..., None, ...)` used to skip, so a stale id could never be removed),
+   replaces the title art from the verified identity, and the next Jellyfin scan re-keys
+   the series. The corroborated owner is never touched; a collision where *both* sides
+   corroborate (TheTVDB merges two TMDB entries) is deliberately not auto-stripped — there
+   is no computed authority, so it is reported, not guessed.
+3. **The repair's re-match timeout.** `RemoteSearch/Apply` fetches metadata + images
+   synchronously and measured >60 s on the live repair; the default timeout made the tool
+   log a false failure and skip its settle wait. The call now carries a 180 s timeout.
+4. **`prompts/identify.md`** tells the free model the rule as fact: supply `tvdb_id` only
+   when TMDB's own record for the pinned `tmdb_id` carries it; never copy one from a
+   parent, a sibling, or another library row; an uncorroborated or contradictory id is
+   stripped and logged.
+
+**Replay (before ship; the §5 requirement).** Every journal plan carrying a tvdb id:
+**564 plan entries / 251 distinct identities**.
+* `tvdb-conflict` (TMDB maps a different id): 9 entries / 7 identities, all historical
+  (The Smurfs stored its own TMDB as the TVDB id, etc.) — the pre-existing rule.
+* `tvdb-uncorroborated` (TMDB maps none): 61 entries / 11 identities, among them
+  `The Wonderfully Weird World of Gumball` tvdb 248482 ×12; the rest are anime whose TMDB
+  entry has no TVDB mapping (Pokémon Horizons, Fate/Grand Order, Monogatari Off & Monster
+  Season). Only **new** plans are affected — the doctor re-opens none of them because none
+  collides.
+* Library-wide (all 323 `tvshow.nfo`): **exactly one duplicated tvdb id — the Gumball
+  pair**; 299 corroborated, 2 uncorroborated (Yamato 2205, the Gumball revival), 5
+  pre-existing conflicts — none of the latter collide.
+
+**Live repair (through the tool, no hand-editing).**
+`media_doctor.py --once --show "The Wonderfully Weird World of Gumball (2025)"` flagged the
+collision, re-matched the item to TMDB 291904 (Tvdb dropped by Jellyfin), rewrote
+`tvshow.nfo` (`<tmdbid>291904</tmdbid>`, `premiered 2025-10-06`, no `<tvdbid>` and no
+`<uniqueid type="tvdb">`), re-fetched the 5 title images from the verified identity, then
+one `Library/Refresh`.
+
+**Owner-visible acceptance (pasted).**
+
+```
+$ sqlite3 ~/Library/Application\ Support/jellyfin/data/jellyfin.db \
+    "SELECT Name, PresentationUniqueKey FROM BaseItems WHERE Name LIKE '%Gumball%' AND Type='...TV.Series';"
+The Wonderfully Weird World of Gumball|tt36985473-en-a656b907eb3a73532e40e44b968d0225
+The Amazing World of Gumball|248482-en-a656b907eb3a73532e40e44b968d0225
+
+/Shows/{id}/Episodes (paths point only into their own folder):
+  The Amazing World of Gumball:  134 -> seasons {1:18, 2:20, 3:7, 4:40, 5:3, 6:46}
+  The Wonderfully Weird World of Gumball: 40 -> seasons {1:20, 2:20}
+  (the 2011 pack's remaining waves are still filing; no 2025 file lives under the 2011
+   show and vice versa)
+```
+
+The doctor's scoped dry-run of both shows now prints `0 show(s) flagged`.
+`bash scripts/verify_fleet.sh` → **ALL CHECKS PASSED** (69 blocking checks; the two
+extended tests are `test_provider_id_verify.py` and `test_series_identity_heal.py`).
+The AMZN "S07" pack's 29 destinations were recorded `preexisting: true` in
+`f6e6b75a…`'s `applied` entries, so no wrong bytes were ever copied over the 2025 show's
+proper files — **no re-download is needed for either show**.
+
+**The `ingesting/` queue (measured 2026-09-29 06:00).** All 7 qBittorrent torrents are
+**100% downloaded** (`stoppedUP`/`stalledUP`); they are waiting on the serial
+chunked-wave identify chain, not on bytes. `identify_capacity.py --probe`: cloudflare out
+of daily budget, gemini 429, **mistral/nvidia/openrouter usable** (+ groq for confirm-mode)
+— the daemon retries each wave with backoff and moves on (the 05:54 log shows South Park
+w284 cycling providers; SpongeBob filed wave 451/456 at 03:32). `queued/` and `failed/`
+are empty; the two One Pace singles are `downloaded` awaiting the same chain. No record is
+deadlocked and nothing needs a re-drop.
+
+**Deploy.** `save-and-push.sh`, deliberately without a fleet restart: the changed paths are
+loaded by freshly spawned processes (the `ai_runner` subprocess reads `library.py` and the
+prompt at run time; `media_doctor` is spawned per cycle by launchd), and two identify runs
+were in flight — a restart would have killed them (§2.4). The next `ai_runner` spawn and
+the next doctor cycle run the new code.
 
 ### Shipped 2026-09-26 — a dot-titled pack's own titles pin its numbering, so a same-season shift parks instead of misfiling
 
@@ -1462,7 +1569,7 @@ Evidence: `state/tmp/74c…-w0_plan.json` (the 1963 destinations), the original 
 verify 178/178 with no drops — all through the fixed tool, not by editing the journal by
 hand. 60.9 GB re-fetches; **no new download source is needed.**
 
-### 10.3 P1 — provider IDs are verified before they can pick art (The Twilight Zone (2019)) — **SHIPPED 2026-09-20, repaired live**
+### 10.3 P1 — provider IDs are verified before they can pick art (The Twilight Zone (2019)) — **SHIPPED 2026-09-20, repaired live**; **2026-09-29: the tvdb-id check gained the no-TMDB-mapping rule and the doctor its cross-series collision repair — see the top shipped section**
 
 **Damage (verified).** Both TZ-2019 plans (`state/tmp/25d44d51…_plan.json`,
 `state/tmp/a3a6e4ca…_plan.json`) carry `tmdb_id: 80979`, `tvdb_id: 325542`; the run log says

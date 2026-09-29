@@ -398,9 +398,15 @@ class Jellyfin:
         body = {"Name": name, "ProviderIds": ids, "SearchProviderName": "TheMovieDb"}
         if year:
             body["ProductionYear"] = year
+        # A long timeout on purpose: Apply fetches the candidate's metadata AND, with
+        # `replaceAllImages`, its images synchronously, and was measured taking over
+        # 60 s on the 2026-09-29 Gumball repair -- the default timed the client out
+        # while the server kept going (the repair landed, but the tool logged a false
+        # failure and skipped its settle wait).
         self._req(f"Items/RemoteSearch/Apply/{item_id}", method="POST",
                   params={"replaceAllImages": str(bool(replace_images)).lower()},
-                  data=json.dumps(body).encode(), ctype="application/json")
+                  data=json.dumps(body).encode(), ctype="application/json",
+                  timeout=180)
 
     def movie_index(self):
         """{absolute movie file path -> (id, has_overview, has_primary)}."""
@@ -668,10 +674,14 @@ def _title_art_files(show_dir):
     return out
 
 
-def _series_identity_problem(show_dir, pids):
-    """`(detail, ident)` when TMDB contradicts the nfo's `premiered`, else None.
+def _series_identity_problem(show_dir, pids, tvdb_owners=None):
+    """`(detail, ident)` when TMDB contradicts the nfo's `premiered`, or when the
+    nfo's tvdb id is pinned by a different library series and TMDB cannot
+    corroborate it here; else None.
 
     `ident` is the verified TMDB record with a `tmdb_id` key added, for the repair.
+    `tvdb_owners` maps a claimed tvdb id to every OTHER series that pins it
+    (`{"show", "path", "tmdb"}`, built by `run_once` from Jellyfin's ProviderIds).
     """
     pids = pids or {}
     nfo = _nfo_identity(show_dir)
@@ -685,32 +695,57 @@ def _series_identity_problem(show_dir, pids):
         return None
     if not ident or ident.get("dead"):
         return None
-    first = str(ident.get("first_air_date") or "")[:4]
-    prem = str(nfo.get("premiered") or "")[:4]
-    if not (first.isdigit() and prem.isdigit()):
-        return None
-    if abs(int(first) - int(prem)) <= 1:
-        return None
     ident = dict(ident)
     ident["tmdb_id"] = str(tmdb_id)
-    why = [f"nfo premiered {nfo.get('premiered')} vs TMDB first air date "
-           f"{ident.get('first_air_date')}"]
-    if nfo.get("tvdbid") and ident.get("tvdb_id") \
-            and str(nfo["tvdbid"]) != str(ident["tvdb_id"]):
-        why.append(f"nfo tvdbid {nfo['tvdbid']} vs TMDB-records {ident['tvdb_id']}")
-    # `enddate` is its own trap: Jellyfin's saver re-stamps it from its DB and it is
-    # not a lockable field, so a stale value survives the rest of the repair (measured:
-    # TZ held Too Cute's 2013-03-06 end date beside the corrected 2019 premiere, and a
-    # premiered-only trigger never looked at it again).
-    end = (nfo.get("enddate") or "")[:4]
-    last = str(ident.get("last_air_date") or "")[:4]
-    if end.isdigit() and last.isdigit() and abs(int(end) - int(last)) > 1:
-        why.append(f"nfo enddate {nfo['enddate']} vs TMDB last air date "
-                   f"{ident.get('last_air_date')}")
-    if nfo.get("originaltitle") and ident.get("original_name") \
-            and nfo["originaltitle"] != ident["original_name"] \
-            and nfo["originaltitle"] != ident.get("name"):
-        why.append(f"nfo originaltitle {nfo['originaltitle']!r} is neither name")
+    first = str(ident.get("first_air_date") or "")[:4]
+    prem = str(nfo.get("premiered") or "")[:4]
+    why = []
+    if first.isdigit() and prem.isdigit() and abs(int(first) - int(prem)) > 1:
+        why.append(f"nfo premiered {nfo.get('premiered')} vs TMDB first air date "
+                   f"{ident.get('first_air_date')}")
+        if nfo.get("tvdbid") and ident.get("tvdb_id") \
+                and str(nfo["tvdbid"]) != str(ident["tvdb_id"]):
+            why.append(f"nfo tvdbid {nfo['tvdbid']} vs TMDB-records {ident['tvdb_id']}")
+        # `enddate` is its own trap: Jellyfin's saver re-stamps it from its DB and it is
+        # not a lockable field, so a stale value survives the rest of the repair (measured:
+        # TZ held Too Cute's 2013-03-06 end date beside the corrected 2019 premiere, and a
+        # premiered-only trigger never looked at it again).
+        end = (nfo.get("enddate") or "")[:4]
+        last = str(ident.get("last_air_date") or "")[:4]
+        if end.isdigit() and last.isdigit() and abs(int(end) - int(last)) > 1:
+            why.append(f"nfo enddate {nfo['enddate']} vs TMDB last air date "
+                       f"{ident.get('last_air_date')}")
+        if nfo.get("originaltitle") and ident.get("original_name") \
+                and nfo["originaltitle"] != ident["original_name"] \
+                and nfo["originaltitle"] != ident.get("name"):
+            why.append(f"nfo originaltitle {nfo['originaltitle']!r} is neither name")
+    # THE CROSS-SERIES COLLISION (2026-09-29, the two Gumball shows). Jellyfin
+    # keys a series' presentation on its provider ids: two series pinning one
+    # tvdb id share ONE `PresentationUniqueKey`, so each series lists the other's
+    # seasons and episodes. The side to repair is the one TMDB cannot corroborate
+    # (its own record maps a different id, or none); the other side is the id's
+    # real owner and is left alone. A collision where BOTH sides corroborate
+    # (TheTVDB merges two TMDB entries) is not auto-stripped -- there is no
+    # computed authority; the `--scan`-style report owns that rare shape.
+    #
+    # The claimed id is read from the nfo AND from Jellyfin's ProviderIds: the
+    # Jellyfin item is what the merge actually keys on, and if a re-match timed
+    # out after the nfo was already cleaned, the trigger must survive so the next
+    # pass finishes the repair rather than leaving the two series merged forever.
+    claimed = str(nfo.get("tvdbid") or (pids or {}).get("Tvdb") or "")
+    others = [o for o in (tvdb_owners or {}).get(claimed, [])
+              if str(o.get("path") or "").rstrip("/") != str(show_dir).rstrip("/")]
+    if claimed and others \
+            and not (ident.get("tvdb_id")
+                     and str(ident["tvdb_id"]) == claimed):
+        names = ", ".join(sorted(str(o.get("show")) for o in others))
+        why.append(
+            f"nfo tvdbid {claimed} is also pinned by {names}; TMDB records "
+            f"{ident.get('tvdb_id') or 'no TVDB id'} for tmdb_id {tmdb_id}, so "
+            f"this series does not own the id and Jellyfin merges both series' "
+            f"seasons and episodes under one presentation key")
+    if not why:
+        return None
     return (f"series identity is contaminated ({'; '.join(why)}) -- TMDB {tmdb_id} "
             f"is {ident.get('name')!r} ({ident.get('year')}); the season year and the "
             f"on-disk title art predate the correct match and will not be replaced "
@@ -728,6 +763,12 @@ def _set_xml_tag(text, tag, value, root):
     return text.replace(f"</{root}>", f"  {repl}\n</{root}>", 1)
 
 
+def _drop_xml_tag(text, tag):
+    """Remove a simple tag entirely. Used when the verified identity has no value
+    for it -- a stale provider id must not survive a repair that disproved it."""
+    return re.sub(rf"<{tag}>.*?</{tag}>\s*", "", text, flags=re.S | re.I)
+
+
 def _set_uniqueid(text, kind, value, default=False):
     if not value:
         return text
@@ -737,6 +778,12 @@ def _set_uniqueid(text, kind, value, default=False):
     if pat.search(text):
         return pat.sub(repl, text, count=1)
     return text.replace("</tvshow>", f"  {repl}\n</tvshow>", 1)
+
+
+def _drop_uniqueid(text, kind):
+    """Remove every `<uniqueid type="kind">` element (a disproved provider id)."""
+    return re.sub(rf'<uniqueid[^>]*type="{kind}"[^>]*>.*?</uniqueid>\s*', "",
+                  text, flags=re.S | re.I)
 
 
 def _download_bytes(url, timeout=60):
@@ -785,9 +832,17 @@ def _rewrite_series_identity(show_dir, ident):
     # `enddate` carries the old identity's last air date (TZ held Too Cute's
     # 2013-03-06) and would otherwise survive every other field being corrected.
     text = _set_xml_tag(text, "enddate", ident.get("last_air_date") or None, "tvshow")
-    text = _set_xml_tag(text, "tvdbid", ident.get("tvdb_id"), "tvshow")
+    if ident.get("tvdb_id"):
+        text = _set_xml_tag(text, "tvdbid", ident.get("tvdb_id"), "tvshow")
+        text = _set_uniqueid(text, "tvdb", ident.get("tvdb_id"), default=True)
+    else:
+        # The verified identity has NO TVDB id. A stale `<tvdbid>` must not
+        # survive: Jellyfin keys a series' presentation on its provider ids, so
+        # keeping another show's tvdb id here merges the two series' seasons and
+        # episodes (the 2011/2025 Gumball mixup). Remove both spellings.
+        text = _drop_xml_tag(text, "tvdbid")
+        text = _drop_uniqueid(text, "tvdb")
     text = _set_xml_tag(text, "tmdbid", ident.get("tmdb_id"), "tvshow")
-    text = _set_uniqueid(text, "tvdb", ident.get("tvdb_id"), default=True)
     text = _set_uniqueid(text, "tmdb", ident.get("tmdb_id"))
     text = re.sub(r"<season>-?\d+</season>\s*", "", text, flags=re.I)
     text = re.sub(r"<episode>-?\d+</episode>\s*", "", text, flags=re.I)
@@ -1642,7 +1697,7 @@ def _file_sig(path):
 # --- per-show diagnosis ------------------------------------------------------
 
 def diagnose_show(show_dir, jf, series_by_path, pids_by_id=None,
-                  state=None, art_cache=None):
+                  state=None, art_cache=None, tvdb_owners=None):
     """Return a dict of problems for one show, comparing disk to Jellyfin."""
     videos = _episode_videos(show_dir)
     disk_count = len(videos)
@@ -1728,7 +1783,7 @@ def diagnose_show(show_dir, jf, series_by_path, pids_by_id=None,
     # nfo and cover in the app. The trigger is computed against TMDB (`premiered` vs
     # `first_air_date`); everything else in the nfo is a repair target, not a trigger.
     try:
-        ident_hit = _series_identity_problem(show_dir, cur_pids)
+        ident_hit = _series_identity_problem(show_dir, cur_pids, tvdb_owners)
     except Exception as e:                                        # noqa: BLE001
         _log(f"  {show_dir.name}: series identity check failed ({e})")
         ident_hit = None
@@ -3351,6 +3406,24 @@ def run_once(dry_run=False, only=None, no_escalate=False):
         _log(f"could not read series provider ids ({e}); identity drift unchecked this pass")
         pids_by_id = {}
 
+    # `tvdb id -> other series pinning it`, the evidence `_series_identity_problem`
+    # needs to break a cross-series merge. Jellyfin keys a series' presentation on
+    # its provider ids, so TWO series sharing a tvdb id share one presentation key
+    # and list each other's seasons/episodes (the 2011/2025 Gumball mixup). Built
+    # from Jellyfin's own ProviderIds -- the field the merge actually uses -- not
+    # from the nfos, which may lag the item.
+    tvdb_owners: dict = {}
+    for owner_sid, owner_pids in (pids_by_id or {}).items():
+        tv = str((owner_pids or {}).get("Tvdb") or "")
+        if not tv:
+            continue
+        owner_path = next((k for k, v in series_by_path.items() if v == owner_sid), "")
+        tvdb_owners.setdefault(tv, []).append({
+            "show": Path(owner_path).name if owner_path else owner_sid,
+            "path": owner_path,
+            "tmdb": (owner_pids or {}).get("Tmdb"),
+        })
+
     state = _load(STATE_FILE, {})
     art_cache = _load(ART_CACHE_FILE, {})
     shows_root = config.MEDIAFS_MOUNT / "Shows"
@@ -3371,7 +3444,7 @@ def run_once(dry_run=False, only=None, no_escalate=False):
     for show_dir in _show_dirs(shows_root, only):
         try:
             probs = diagnose_show(show_dir, jf, series_by_path, pids_by_id,
-                                  state, art_cache)
+                                  state, art_cache, tvdb_owners)
         except Exception as e:                                        # noqa: BLE001
             _log(f"  {show_dir.name}: diagnose failed ({e}); skipping")
             continue

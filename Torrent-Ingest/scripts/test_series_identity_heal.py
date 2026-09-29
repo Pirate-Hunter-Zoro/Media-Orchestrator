@@ -21,6 +21,10 @@ This pins the whole repair, offline (every provider answer is stubbed):
   Part 4 -- offline (no provider answer) is a no-op, and no file is touched.
   Part 5 -- the episode-slot writer inserts <season>/<episode> into a sidecar that
             lacks them (Jellyfin's null-index S02 saver) and locks it.
+  Part 6 -- a tvdb id pinned by TWO series and uncorroborated by TMDB (the
+            2011/2025 Gumball mixup) fires on the side that does not own it, and
+            the repair removes the tag; the corroborated side never fires and an
+            uncollided id is left alone.
 
     python3 scripts/test_series_identity_heal.py
 
@@ -225,6 +229,74 @@ try:
     md._write_nfo_title(video, "Meet in the Middle", 1, season=2)
     check("a second pass does not duplicate tags",
           text.count("<season>") == 1 and nfo.read_text("utf-8").count("<season>") == 1)
+finally:
+    tmp.cleanup()
+
+# --- Part 6: two series sharing one tvdb id (the Gumball mixup) ----------------
+print("Part 6 -- a shared, uncorroborated tvdb id is stripped from the non-owner")
+tmp = tempfile.TemporaryDirectory()
+try:
+    show = Path(tmp.name) / "The Wonderfully Weird World of Gumball (2025)"
+    (show / "Season 01").mkdir(parents=True)
+    (show / "tvshow.nfo").write_text(
+        "<tvshow><title>The Wonderfully Weird World of Gumball</title>"
+        "<year>2025</year><premiered>2025-10-06</premiered>"
+        "<tmdbid>291904</tmdbid><tvdbid>248482</tvdbid>"
+        "<uniqueid type=\"tvdb\">248482</uniqueid></tvshow>", encoding="utf-8")
+    GOOD_2025 = {"name": "The Wonderfully Weird World of Gumball",
+                 "original_name": "The Wonderfully Weird World of Gumball",
+                 "year": 2025, "first_air_date": "2025-10-06",
+                 "last_air_date": "2025-12-22", "tvdb_id": None}
+    OTHER = {"show": "The Amazing World of Gumball (2011)",
+             "path": str(Path(tmp.name) / "The Amazing World of Gumball (2011)"),
+             "tmdb": "37606"}
+    SELF = {"show": show.name, "path": str(show), "tmdb": "291904"}
+    old = tmdbguide.show_identity
+    tmdbguide.show_identity = lambda _id: dict(GOOD_2025)
+    hit = md._series_identity_problem(show, {"Tmdb": "291904"},
+                                      {"248482": [OTHER, SELF]})
+    check("an uncorroborated shared tvdb id fires", bool(hit))
+    detail, ident = hit or ("", {})
+    check("the evidence names the other owner and TMDB's own answer",
+          "The Amazing World of Gumball (2011)" in detail
+          and "records no TVDB id" in detail)
+    check("the verified identity carries no tvdb id to re-pin",
+          ident.get("tmdb_id") == "291904" and not ident.get("tvdb_id"))
+    # No other series pins the id -> not a collision, not touched.
+    check("an id nobody else pins is left for the collision check",
+          md._series_identity_problem(show, {"Tmdb": "291904"}, {}) is None)
+    md._rewrite_series_identity(show, ident)
+    nfo = (show / "tvshow.nfo").read_text("utf-8")
+    check("the disowned tvdbid is removed", "<tvdbid>" not in nfo)
+    check("the tvdb uniqueid is removed",
+          'type="tvdb"' not in nfo)
+    check("the verified tmdbid survives", "<tmdbid>291904</tmdbid>" in nfo)
+    check("the premiere is untouched", "<premiered>2025-10-06</premiered>" in nfo)
+    # A half-done repair: the nfo is clean but Jellyfin still pins the id (a
+    # re-match that timed out). The trigger must survive on Jellyfin's own
+    # ProviderIds so the next pass finishes the job.
+    check("a still-pinned Jellyfin tvdb id keeps the trigger alive",
+          md._series_identity_problem(
+              show, {"Tmdb": "291904", "Tvdb": "248482"},
+              {"248482": [OTHER, SELF]}) is not None)
+
+    # The id's real owner is corroborated by TMDB -- it must NOT be stripped.
+    GOOD_2011 = dict(GOOD_2025, name="The Amazing World of Gumball",
+                     year=2011, first_air_date="2011-05-03",
+                     tvdb_id="248482")
+    tmdbguide.show_identity = lambda _id: dict(GOOD_2011)
+    owner = Path(tmp.name) / "The Amazing World of Gumball (2011)"
+    owner.mkdir()
+    (owner / "tvshow.nfo").write_text(
+        "<tvshow><title>The Amazing World of Gumball</title>"
+        "<premiered>2011-05-03</premiered><tmdbid>37606</tmdbid>"
+        "<tvdbid>248482</tvdbid></tvshow>", encoding="utf-8")
+    hit = md._series_identity_problem(owner, {"Tmdb": "37606"},
+                                      {"248482": [SELF, {"show": owner.name,
+                                                         "path": str(owner),
+                                                         "tmdb": "37606"}]})
+    check("the corroborated owner is never stripped", hit is None)
+    tmdbguide.show_identity = old
 finally:
     tmp.cleanup()
 
