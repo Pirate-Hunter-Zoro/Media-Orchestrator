@@ -330,6 +330,17 @@ prompt at run time; `media_doctor` is spawned per cycle by launchd), and two ide
 were in flight — a restart would have killed them (§2.4). The next `ai_runner` spawn and
 the next doctor cycle run the new code.
 
+**Post-reboot mount note (measured 2026-09-29, 05:42 reboot).** A full `media_doctor` pass
+is I/O-bound through the mount: one sidecar open/read/close measured **~90 ms** (30 files
+in 2.6–3.0 s, repeatable) versus ~0 s on the SSD, so the whole-library pass runs far past
+the 1800 s cycle and `library_health.txt` lags (its timestamp is the honest read). Scoped
+passes (`--show`) are immediate — they were used for the Gumball repair — and the daemon
+does progress (kernel sample: continuous opens). Once, during the post-reboot hydration
+storm, a process wedged for minutes on ONE local 5 KB `.nfo` that read fine seconds later;
+killing that process and restarting the daemon cleared it, and the sidecar was not lost.
+Do not diagnose a stale report as a library fault before checking the file's timestamp
+(§4).
+
 ### Shipped 2026-09-26 — a dot-titled pack's own titles pin its numbering, so a same-season shift parks instead of misfiling
 
 **Two drops in `failed/` overnight, one cause and one policy.** The Amazing World of
