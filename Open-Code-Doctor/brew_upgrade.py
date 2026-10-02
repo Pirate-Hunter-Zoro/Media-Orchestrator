@@ -2,7 +2,10 @@
 """Brew-Upgrade: keeps this machine's packages current without anyone remembering to.
 
 Homebrew is the bulk of it, and npm's global packages ride along at the end -- they are
-the only other package manager on this box that upgrades without a password. What is
+the only other package manager on this box that upgrades without a password. Claude Code
+and Codex follow, through their own native updaters: both live in ~/.local/bin, outside
+brew and npm, and the board's headless turns run them with nobody at a prompt to see an
+update notice. What is
 deliberately NOT here: the conda base (the fleet's python lives in it; see
 PROTECTED_CASKS), system gems, and `softwareupdate`, all of which need root that a
 LaunchAgent cannot get and should not have.
@@ -297,6 +300,29 @@ def upgrade_npm_globals() -> None:
         log_output(out, "npm", tail=8)
 
 
+AGENT_CLIS = (("claude", ["update"]), ("codex", ["update"]))
+
+
+def upgrade_agent_clis() -> None:
+    """`claude update` and `codex update`, the native installers' own updaters. Each
+    swaps a symlink in ~/.local/bin to a new versioned build, so a session already
+    running keeps its binary and the next one starts on the new one.
+
+    Failure is logged and shrugged off, like npm's: a missed day is caught tomorrow."""
+    for name, args in AGENT_CLIS:
+        exe = Path.home() / ".local" / "bin" / name
+        if not exe.exists():
+            continue
+        code, out = run([str(exe)] + args, timeout=900, mutating=True)
+        if DRY_RUN:
+            continue
+        if code == 0:
+            log_output(out, f"{name} update", tail=1)
+        else:
+            log(f"  ! {name} update exited {code}")
+            log_output(out, f"{name} update", tail=8)
+
+
 def main() -> int:
     trim_log()
 
@@ -365,6 +391,7 @@ def main() -> int:
                 f"Upgrade it by hand: brew upgrade --cask {cask}")
 
         upgrade_npm_globals()
+        upgrade_agent_clis()
 
         # Reclaim the space the upgrade just spent. Keeps a week of downloads so a bad
         # upgrade can still be rolled back from the cache.
