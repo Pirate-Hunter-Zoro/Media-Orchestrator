@@ -209,7 +209,7 @@ Rows marked **measured** were verified in the session that last touched them.
 
 | | |
 |---|---|
-| `verify_fleet.sh` | **70 blocking checks** (2026-10-03: `test_comic_franchises.py` registered). The 2026-10-03 run passed every check but one, and that one is live data, not code: `test_torrent_metadata_safety.py` refuses 7 real `.torrent`s whose releases carry `.bat`/`.sh`/`.exe` helpers (`Remove-Dub.bat`, `mkvmerge.exe`, the `Language Options/` switchers), dropped 07:13–07:18 — the safety gate working as designed; those drops cannot be admitted until re-created without executables. **69 blocking checks** (2026-09-29: `test_provider_id_verify.py` and `test_series_identity_heal.py` extended with the shared/uncorroborated-tvdb-id rules — no new check file. 2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
+| `verify_fleet.sh` | **ALL CHECKS PASSED**, **70 blocking checks** (2026-10-03: `test_comic_franchises.py` registered, and `test_torrent_metadata_safety.py` softened the same day — executable helpers beside media are admitted, executable-only packs refused; 637 real `.torrent`s on the admission paths accepted — see the top shipped sections. **69 blocking checks** (2026-09-29: `test_provider_id_verify.py` and `test_series_identity_heal.py` extended with the shared/uncorroborated-tvdb-id rules — no new check file. 2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
 | `fleet_doctor` / `fleet_health` | re-run 2026-09-29 05:54: `pass complete: 0 finding(s)` / `all clear` |
 | `media_doctor` | series-level identity + title art are now scanned (`series_identity_stale`/`series_art_stale`/`episode_slot_missing`); **TZ (2019) repaired live** — folder.jpg `965f20be…`, landscape.jpg `ec122588…` (neither Too Cute hash), tvshow.nfo `premiered 2019-04-01`, `tvdbid 358915`, `enddate 2020-06-25`, item locked, 2 seasons / 20 indexed episodes / no ghost season (§10.3). **2026-09-26 evening:** an episode image whose provider-best answer is already applied (or absent) is refused per image for 30 d (`art_no_still` `{"ts","url","reason"}`, `_art_next_action`, transport failures never remembered) — the DW (1963) S04E16–E18 loop ended (scoped passes now `0 show(s) flagged`); the stuck counters persist (report written before the state save) so a genuinely unfixable `[auto]` line is demoted to NEEDS REVIEW; the AI escalation postcondition measures only the episodes the run was handed |
 | Repo | one monorepo at `~/Developer/Media-Orchestrator`; the 2026-09-23 session added `ac1c37a` (Smurfs re-fetch skeleton fix, deployed 21:49 via restart of torrentingest 49948 / directingest 49957 / driveingest 49969), plus HANDOFF/commit follow-ups through `1b9cfc9`. The 2026-09-24 session added `48f9fd9` (a private trackerless `.torrent` is refused at registration — see the shipped section), deployed 05:47 via restart of torrentingest 72073 / directingest 72081 / driveingest 72094; that restart also put `bde8d71` (a log line) live on those three. The 2026-09-24 **evening** session added `4202bb3` (the show summary counts evicted episodes; a proven collision retries instead of parking the pack — see the shipped section), deployed 21:37:41 via restart of torrentingest 88328 / directingest 88336 / driveingest 88349. On top of the stall fix `c9fd3aa` and the 2026-09-21/22 commits through `81d07d7` |
@@ -221,7 +221,47 @@ Rows marked **measured** were verified in the session that last touched them.
 | In flight | **2026-09-29:** the reaper drains (`reap.py` PID 1446); `queued/` and `failed/` are empty. Seven chunked packs are **100% downloaded** in qBittorrent (`stoppedUP`/`stalledUP`) and cycling through the serial identify chain: the SA89 Gumball (`532d8e71…`), The Simpsons (`1d9098aa…`), South Park w284 (in an `ai_runner` at session end), Friends (`1a6558e5…`), Family Guy (`705febda…`), American Dad (`06dd53e1…`), SpongeBob (`86b44512…`, 451/456 filed); plus the two One Pace singles `downloaded` awaiting a provider. `identify_capacity.py --probe` says mistral/nvidia/openrouter can serve (cloudflare/gemini capped) — capacity, not a deadlock. |
 | Parked re-drops | **§15's seams shipped 2026-09-25** (HANDOFF top section). American Dad's wrong-slot S04E06 and Doctor Who's S00E04 collision were repaired through `scripts/repair_slots.py`; after the deploy the three sources were moved out of `failed/` back to the watch root — Family Guy `705febda…`, Friends `1a6558e5…`, and American Dad `06dd53e1…` from its `state/torrent_sources/` mirror — each resuming from its `chunk_done`. The Simpsons is separately recovering (§15.4). |
 | Open work | **§15 is closed except the live acceptance checks**: the Simpsons wave/terminal confirmation (§15.4), and the three re-dropped packs completing their waves on the fixed code (Family Guy's S07E07 alternate, Friends' 32 Featurettes, American Dad's S10E06). Toriko: 0 blank plots. The free-AI upgrade (§10.10) is implemented; the §15.1–15.3 seams are its last measured gaps and are now shipped. **2026-09-29: the Gumball cross-series mixup is fixed and guarded** (top shipped section) — the next session should confirm both Gumball shows stay separate after the next SA89 wave files and after any Jellyfin re-scrape. **2026-10-03: the franchise-split class is closed for Citrus/Citrus+ and Inuyasha/Yashahime**; the audit over the whole shelf (SSD+pool, 119 manga + 8 western, AniList relations) found no third pair, and the generator/guard cannot silently miss this shape again. |
-| Pending after reboot | §12: rename close-out verified done; **rotation (item 6) CLOSED by owner decision 2026-09-23 — not doing it**. **2026-10-03:** an ingest-daemon restart is pending to load the Citrus/Inuyasha table into the long-running `ingest.py` fastpath (the AI subprocesses and every `media_doctor` spawn already read it); two `ai_runner`s were in flight at ship time so the session used `save-and-push.sh`. The owner's 7 fresh `.torrent`s carrying executables block `test_torrent_metadata_safety.py` until re-created (see the `verify_fleet.sh` row). |
+| Pending after reboot | §12: rename close-out verified done; **rotation (item 6) CLOSED by owner decision 2026-09-23 — not doing it** |
+
+### Shipped 2026-10-03 (later) — executable helpers beside media are clutter, not a refusal; the four wrongly-refused packs are back in the queue
+
+**The owner's instruction.** The safety gate was refusing real media packs because they
+carry `.bat`/`.sh`/`.exe` release helpers (`Remove-Dub.bat`, `Language Switch.sh`, a
+bundled `mkvmerge.exe`), and the owner cannot re-create those torrents: "just because the
+torrent has such a file doesn't mean we need to execute it." The pipeline never executes a
+release's helper files — plan-coverage files the media and ignores the rest — so the gate
+was refusing clutter, not danger.
+
+**The change (`1a5c01a`).** `acceptance_gate.metadata_is_safe` still ALWAYS refuses a path
+traversal or an absolute path (the two shapes that can write outside the download
+directory). Executable extensions are now tolerated when the torrent also carries a file
+the fleet files (`config.DIRECT_INGEST_EXTENSIONS`: video, comics, archives converted to
+comics, e-books); a pack of ONLY executables (plus nfo/samples) is still refused because
+there is nothing to file. A torrent with no executables behaves exactly as before, so the
+change can only ADMIT more, never refuse more. The refusal reason string and the comment
+blocks in `acceptance_gate.py`/`ingest.py` now state the policy.
+
+**Evidence, both directions.** `test_torrent_metadata_safety.py`: traversal, mid-path
+traversal and absolute paths (with or without media) refused; executable-only, dmg-only,
+lnk-only and exe+nfo-only refused; media + exe / + sh / + bat / + js / + dmg and all the
+plain media shapes accepted; **637 real `.torrent`s on the admission paths, 0 refused**
+(was 7). `bash scripts/verify_fleet.sh` → **ALL CHECKS PASSED** (70 blocking checks).
+
+**Re-queue, through the pipeline's own re-drop signal.** The four refused records (the
+journal carried their `gate_decision: refuse`): `e303513a… [neoDESU] KonoSuba`,
+`16805dde… [neoHEVC] Little Busters`, `7b40b64f… Nurarihyon no Mago`,
+`a9437da0… [neoHEVC] Desert Punk`. Their `.torrent`s were moved from `failed/` back to
+the watch root's top level (never `queued/`); the daemon registered them at 10:23:39 —
+`Re-queuing a refused torrent dropped again` for KonoSuba and Little Busters (fresh
+records), and the two iCloud-duplicated ones filed the extra copy under `finished/` while
+the live records advanced. Post-move journal: Nurarihyon `queued`, Desert Punk
+`downloading`, KonoSuba/Little Busters `queued` both `gate=unknown`/fresh — back in the
+normal admission flow.
+
+**Deploy.** `Torrent-Ingest/scripts/ship.sh`, after a pgrep-gated wait for the in-flight
+`ai_runner` to finish (§2.4); restarted torrentingest/directingest/driveingest. This also
+put the earlier same-day Citrus/Inuyasha table on the long-running `ingest.py` fastpath,
+closing that pending restart.
 
 ### Shipped 2026-10-03 — Citrus+ is a series, not a suffix: franchise membership reads the pool and AniList, and a member outside its master is refused
 
@@ -277,8 +317,8 @@ tails); the mount lists exactly `Manga/Citrus/Citrus{, +}/` and
 **Deploy.** `33aa2d4`, pushed with `scripts/save-and-push.sh`, deliberately without a
 fleet restart: two `ai_runner`s were in flight (§2.4), and the identify subprocesses plus
 every `media_doctor` spawn read `library.py`/`config.py`/the prompt at run time (the
-2026-09-29 precedent). The long-running `ingest.py` fastpath keeps the old table until
-its next restart — in the state table's pending row.
+2026-09-29 precedent). The long-running `ingest.py` fastpath kept the old table until the
+later same-day `ship.sh` restart (see the top shipped section), which loaded it.
 
 ### Shipped 2026-09-29 — a shared TVDB id is not an identity: the two Gumball shows separate, and uncorroborated ids stop at the door
 
