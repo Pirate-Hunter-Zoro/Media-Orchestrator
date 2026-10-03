@@ -203,25 +203,82 @@ code cites these files by section number.
 
 ---
 
-## 6. State, updated 2026-09-29 (the five-fault verification date remains 2026-09-20)
+## 6. State, updated 2026-10-03 (the five-fault verification date remains 2026-09-20)
 
 Rows marked **measured** were verified in the session that last touched them.
 
 | | |
 |---|---|
-| `verify_fleet.sh` | **ALL CHECKS PASSED**, **69 blocking checks** (2026-09-29: `test_provider_id_verify.py` and `test_series_identity_heal.py` extended with the shared/uncorroborated-tvdb-id rules — no new check file. 2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
+| `verify_fleet.sh` | **70 blocking checks** (2026-10-03: `test_comic_franchises.py` registered). The 2026-10-03 run passed every check but one, and that one is live data, not code: `test_torrent_metadata_safety.py` refuses 7 real `.torrent`s whose releases carry `.bat`/`.sh`/`.exe` helpers (`Remove-Dub.bat`, `mkvmerge.exe`, the `Language Options/` switchers), dropped 07:13–07:18 — the safety gate working as designed; those drops cannot be admitted until re-created without executables. **69 blocking checks** (2026-09-29: `test_provider_id_verify.py` and `test_series_identity_heal.py` extended with the shared/uncorroborated-tvdb-id rules — no new check file. 2026-09-26: `test_media_doctor_repair.py` registered after `test_metadata_heal.py`; `test_pack_conflict.py` registered earlier the same day; the 65-check figure added `test_show_summary_inventory.py` on 2026-09-24 and the 2026-09-25 figure of 67 added `test_skeleton_merge_feedback.py` and `test_slot_repair.py`; the 60-check figure predates `test_undownloadable_torrent.py`) |
 | `fleet_doctor` / `fleet_health` | re-run 2026-09-29 05:54: `pass complete: 0 finding(s)` / `all clear` |
 | `media_doctor` | series-level identity + title art are now scanned (`series_identity_stale`/`series_art_stale`/`episode_slot_missing`); **TZ (2019) repaired live** — folder.jpg `965f20be…`, landscape.jpg `ec122588…` (neither Too Cute hash), tvshow.nfo `premiered 2019-04-01`, `tvdbid 358915`, `enddate 2020-06-25`, item locked, 2 seasons / 20 indexed episodes / no ghost season (§10.3). **2026-09-26 evening:** an episode image whose provider-best answer is already applied (or absent) is refused per image for 30 d (`art_no_still` `{"ts","url","reason"}`, `_art_next_action`, transport failures never remembered) — the DW (1963) S04E16–E18 loop ended (scoped passes now `0 show(s) flagged`); the stuck counters persist (report written before the state save) so a genuinely unfixable `[auto]` line is demoted to NEEDS REVIEW; the AI escalation postcondition measures only the episodes the run was handed |
 | Repo | one monorepo at `~/Developer/Media-Orchestrator`; the 2026-09-23 session added `ac1c37a` (Smurfs re-fetch skeleton fix, deployed 21:49 via restart of torrentingest 49948 / directingest 49957 / driveingest 49969), plus HANDOFF/commit follow-ups through `1b9cfc9`. The 2026-09-24 session added `48f9fd9` (a private trackerless `.torrent` is refused at registration — see the shipped section), deployed 05:47 via restart of torrentingest 72073 / directingest 72081 / driveingest 72094; that restart also put `bde8d71` (a log line) live on those three. The 2026-09-24 **evening** session added `4202bb3` (the show summary counts evicted episodes; a proven collision retries instead of parking the pack — see the shipped section), deployed 21:37:41 via restart of torrentingest 88328 / directingest 88336 / driveingest 88349. On top of the stall fix `c9fd3aa` and the 2026-09-21/22 commits through `81d07d7` |
 | Stall policy | **one 24h deadline, partial bytes kept — shipped `c9fd3aa`, deployed 2026-09-23 20:08 CDT.** `_abandon_stalled` no longer reads `availability < 1` as "no complete copy in the swarm" (it is a connected-peers fact and reads < 1 during every stall); `STALL_ABANDON_NO_COMPLETE_SEC` is gone; an abandon calls `qbt.remove(delete_files=False)` so a re-drop resumes. The four Bob's Burgers packs the owner moved back are downloading again (S02 27%, S06 10.8%, S01 stalled with 4 complete peers known, S03 parked between waves) |
 | Jellyfin | 323 series (measured 2026-09-29); 20,052 episodes, 448 movies (last counted 2026-09-19). The 2011/2025 Gumball series are separated and re-keyed (see the top shipped section) |
-| Mount | **One Piece, session 2 (2026-09-20 evening):** the franchise layout is live — `Manga/One Piece/One Piece/` (189 files) and `Manga/One Piece/Ace's Story/` (2), the old flat master and `One Piece - Ace's Story/` gone. 12 junk chapters purged (covered repeats c1080/1088/1098/1112/1133, the six bare `cNNNN.cbz` the old mislabel repair created, the nested `c1176` duplicate); 5 One Piece chapters misfiled into Jujutsu Kaisen purged as covered (JJK ends at 272 chapters, One Piece v108-v111 own them). Sessions' older rows (§10.0 rows 1–3) remain true. |
+| Mount | **One Piece, session 2 (2026-09-20 evening):** the franchise layout is live — `Manga/One Piece/One Piece/` (189 files) and `Manga/One Piece/Ace's Story/` (2), the old flat master and `One Piece - Ace's Story/` gone. 12 junk chapters purged (covered repeats c1080/1088/1098/1112/1133, the six bare `cNNNN.cbz` the old mislabel repair created, the nested `c1176` duplicate); 5 One Piece chapters misfiled into Jujutsu Kaisen purged as covered (JJK ends at 272 chapters, One Piece v108-v111 own them). Sessions' older rows (§10.0 rows 1–3) remain true. **2026-10-03:** Citrus/Citrus+ (15 files) and Inuyasha/Yashahime (25) joined their masters via `migrate_comics.sh --apply` — `Manga/Citrus/Citrus/`, `Manga/Citrus/Citrus+/`, `Manga/Inuyasha/Inuyasha/`, `Manga/Inuyasha/Yashahime - Princess Half-Demon/`; 40/40 moves verified, both old top-level shells removed. |
 | `library.db` | colour-aware comic identity is live (`item_key` includes `colored`; no `MAX(colored)`). The One Piece renames recorded `cNNNN` chapter rows and superseded the old volume rows; every purge's DB mirror runs via `dbhook.record_purge` from the reconciler/reaper |
-| YacReader | open (Comics), hidden, 30-min self-update. The migration moved 191 files, so the index is catching up; `yacreader_rescan.py --apply` was run and the supervisor refreshes it. Re-check `--files` after the next update |
+| YacReader | open (Comics), hidden, 30-min self-update. The migration moved 191 files, so the index is catching up; `yacreader_rescan.py --apply` was run and the supervisor refreshes it. Re-check `--files` after the next update. **2026-10-03:** the Citrus/Inuyasha move left 40 unindexed files and 2 dead folder rows; `comic_shelf_audit.py --apply` cleaned the rows and `yacreader_rescan.py --apply` bounced the app (PID 2538, startup update running, 39 unindexed at 08:58) — re-check `--files`, it should reach 0 |
 | In flight | **2026-09-29:** the reaper drains (`reap.py` PID 1446); `queued/` and `failed/` are empty. Seven chunked packs are **100% downloaded** in qBittorrent (`stoppedUP`/`stalledUP`) and cycling through the serial identify chain: the SA89 Gumball (`532d8e71…`), The Simpsons (`1d9098aa…`), South Park w284 (in an `ai_runner` at session end), Friends (`1a6558e5…`), Family Guy (`705febda…`), American Dad (`06dd53e1…`), SpongeBob (`86b44512…`, 451/456 filed); plus the two One Pace singles `downloaded` awaiting a provider. `identify_capacity.py --probe` says mistral/nvidia/openrouter can serve (cloudflare/gemini capped) — capacity, not a deadlock. |
 | Parked re-drops | **§15's seams shipped 2026-09-25** (HANDOFF top section). American Dad's wrong-slot S04E06 and Doctor Who's S00E04 collision were repaired through `scripts/repair_slots.py`; after the deploy the three sources were moved out of `failed/` back to the watch root — Family Guy `705febda…`, Friends `1a6558e5…`, and American Dad `06dd53e1…` from its `state/torrent_sources/` mirror — each resuming from its `chunk_done`. The Simpsons is separately recovering (§15.4). |
-| Open work | **§15 is closed except the live acceptance checks**: the Simpsons wave/terminal confirmation (§15.4), and the three re-dropped packs completing their waves on the fixed code (Family Guy's S07E07 alternate, Friends' 32 Featurettes, American Dad's S10E06). Toriko: 0 blank plots. The free-AI upgrade (§10.10) is implemented; the §15.1–15.3 seams are its last measured gaps and are now shipped. **2026-09-29: the Gumball cross-series mixup is fixed and guarded** (top shipped section) — the next session should confirm both Gumball shows stay separate after the next SA89 wave files and after any Jellyfin re-scrape. |
-| Pending after reboot | §12: rename close-out verified done; **rotation (item 6) CLOSED by owner decision 2026-09-23 — not doing it** |
+| Open work | **§15 is closed except the live acceptance checks**: the Simpsons wave/terminal confirmation (§15.4), and the three re-dropped packs completing their waves on the fixed code (Family Guy's S07E07 alternate, Friends' 32 Featurettes, American Dad's S10E06). Toriko: 0 blank plots. The free-AI upgrade (§10.10) is implemented; the §15.1–15.3 seams are its last measured gaps and are now shipped. **2026-09-29: the Gumball cross-series mixup is fixed and guarded** (top shipped section) — the next session should confirm both Gumball shows stay separate after the next SA89 wave files and after any Jellyfin re-scrape. **2026-10-03: the franchise-split class is closed for Citrus/Citrus+ and Inuyasha/Yashahime**; the audit over the whole shelf (SSD+pool, 119 manga + 8 western, AniList relations) found no third pair, and the generator/guard cannot silently miss this shape again. |
+| Pending after reboot | §12: rename close-out verified done; **rotation (item 6) CLOSED by owner decision 2026-09-23 — not doing it**. **2026-10-03:** an ingest-daemon restart is pending to load the Citrus/Inuyasha table into the long-running `ingest.py` fastpath (the AI subprocesses and every `media_doctor` spawn already read it); two `ai_runner`s were in flight at ship time so the session used `save-and-push.sh`. The owner's 7 fresh `.torrent`s carrying executables block `test_torrent_metadata_safety.py` until re-created (see the `verify_fleet.sh` row). |
+
+### Shipped 2026-10-03 — Citrus+ is a series, not a suffix: franchise membership reads the pool and AniList, and a member outside its master is refused
+
+**The owner's report.** `Akame ga KILL!` and `ZERO` were correctly nested under one
+master; `Citrus` and `Citrus+` were two top-level folders. Fix it, upgrade the free-AI
+system so it cannot recur, and check everywhere else.
+
+**Root cause, three measured pieces.** (1) `library.normalize_folder_name` deleted a
+trailing `+`, so `Citrus+` and `Citrus` collapsed to the SAME key — the sequel was
+unrepresentable in `config.COMIC_FRANCHISES` and would have resolved onto the original's
+folder. (2) `build_comic_franchises.py` required a two-word/nine-character shared prefix,
+which `Citrus` + `Citrus+` fails; it also read only the SSD, so pool-only series
+(Inuyasha, Ranma ½, Sailor Moon, Slam Dunk) were invisible to it. (3) Nothing in
+`validate_plan` refused a table-known member filed outside its master — the table only
+guided the model, it never bound it.
+
+**The fix, computed.** `normalize_folder_name` keeps a TRAILING `+` as the word "plus"
+(mid-title signs untouched: `3.0+1.0`, `Undead + Unluck`). `config.COMIC_FRANCHISES` gains
+the Citrus row (values are the live folder names) and the Inuyasha row generated by the
+upgraded tool. `resolve_comic_folder` and the digest's franchise block now match the
+folder ACTUALLY on the shelf, so a member folder named for the whole series
+(`Akame ga KILL! ZERO`, `Fairy Tail - 100 Years Quest`) is used instead of creating a
+canonical sibling and splitting the series. `library._reject_franchise_member_outside_master`
+makes the table binding: a comic whose series is computable (source filename or
+destination folder) may not be filed outside its franchise master; it fails open when no
+series can be derived. `build_comic_franchises.py` reads the union of SSD + remote
+inventory, detects the one-word weak prefix shape, and proposes it ONLY on AniList's own
+SEQUEL/PREQUEL/SIDE_STORY/SPIN_OFF/PARENT evidence; `--relations` adds the no-shared-prefix
+scan (`Inuyasha` + `Yashahime`), 429-retried so a throttled run cannot read as clean.
+`prompts/identify.md` lost the stale line that told the model Akame's two series must be
+two TOP-LEVEL folders. `verify_owner_report.py` gained a whole-shelf `franchise layout`
+line so the fault is visible on any title, not just the reported one.
+
+**Replay (before shipping).** `test_comic_franchises.py` replayed the guard over 982
+historical plans: 27 would now be rejected, every one a franchise member filed outside
+its master (Citrus+, One Piece Colored, Magic Knight Rayearth 2, Ghost in the Shell
+SAC/Human Algorithm, Inuyasha/Yashahime, …). The generator audit over the whole shelf
+found exactly one weak-prefix pair (Citrus) and one relation-only pair
+(Inuyasha/Yashahime); no third. `test_placement_guards.py` and `test_manga_mislabels.py`
+still pass unchanged.
+
+**Live repair through the tools (no hand `mv`).** `migrate_comics.sh --apply`: 40 files
+moved and verified 40/40 — Citrus v01–v10 and Citrus+ v01–v05 into `Manga/Citrus/`,
+Inuyasha VIZBIG v01–v18 and Yashahime v01–v08 into `Manga/Inuyasha/`; both state files
+rewritten (40 + 23 keys). `repair_journal_paths.py --apply` rewrote 4 records / 70
+entries onto the moved paths. `comic_shelf_audit.py --apply` removed the two emptied
+top-level shells and 40 stale YacReader rows. **Owner-visible:** `verify_owner_report.py`
+→ `PASS franchise layout`, 5 PASS / 0 FAIL / 1 PENDING (the known One Piece chapter
+tails); the mount lists exactly `Manga/Citrus/Citrus{, +}/` and
+`Manga/Inuyasha/{Inuyasha, Yashahime - Princess Half-Demon}/`; the old top-level
+`Citrus+` and `Yashahime` folders are gone.
+
+**Deploy.** `33aa2d4`, pushed with `scripts/save-and-push.sh`, deliberately without a
+fleet restart: two `ai_runner`s were in flight (§2.4), and the identify subprocesses plus
+every `media_doctor` spawn read `library.py`/`config.py`/the prompt at run time (the
+2026-09-29 precedent). The long-running `ingest.py` fastpath keeps the old table until
+its next restart — in the state table's pending row.
 
 ### Shipped 2026-09-29 — a shared TVDB id is not an identity: the two Gumball shows separate, and uncorroborated ids stop at the door
 
