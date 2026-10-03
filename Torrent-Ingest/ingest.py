@@ -1235,12 +1235,15 @@ def _torrent_acceptance_gate(record, h, path):
     refusal here costs nothing: nothing has been added and nothing downloaded.
     """
     # SAFETY first, and it is not the relevance gate. A hostile file list (traversal,
-    # absolute path, executable) is refused outright before anything is added. This check
-    # used to live in the searcher, which judged every drop it made; the searcher is gone
-    # and hand-drops are the only admission path left, so it runs here now (§4.22).
+    # absolute path, or executable-only with no media) is refused outright before
+    # anything is added. This check used to live in the searcher, which judged every drop
+    # it made; the searcher is gone and hand-drops are the only admission path left, so it
+    # runs here now (§4.22). Executables BESIDE media are admitted since 2026-10-03 at
+    # the owner's instruction -- the pipeline never executes them (see acceptance_gate).
     if not acceptance_gate.metadata_is_safe(path):
         record["gate_decision"] = acceptance_gate.REFUSE
-        record["gate_reason"] = "unsafe .torrent metadata (path traversal or executable file)"
+        record["gate_reason"] = ("unsafe .torrent metadata (absolute path, path "
+                                 "traversal, or executable files with no media)")
         acceptance_gate.record(acceptance_gate.REFUSE)
         _fail(record, f"acceptance gate: {record['gate_reason']}", refused=True)
         return False

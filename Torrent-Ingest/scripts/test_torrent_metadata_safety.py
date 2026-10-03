@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Regression test for the hostile-`.torrent` safety gate (2026-09-10).
+"""Regression test for the hostile-`.torrent` safety gate (2026-09-10; executables
+tolerated beside media, 2026-10-03).
 
-The check refuses a `.torrent` whose file list is hostile -- a path traversal, an absolute
-path, or an executable -- BEFORE qBittorrent is ever asked to add it.
+The check refuses a `.torrent` whose file list is hostile -- a path traversal or an
+absolute path -- BEFORE qBittorrent is ever asked to add it. Executable files are NOT
+hostile by themselves any more: the pipeline never runs a release's helpers, so a
+`Remove-Dub.bat`/`mkvmerge.exe` beside the episodes is clutter. A torrent whose ONLY
+files are executables is still refused -- there is nothing the fleet would file.
 
 **Why it lives in Torrent-Ingest now.** It used to live only in the searcher, which ran it
 on every drop it made. The searcher was removed on 2026-09-10, and hand-dropping a
@@ -70,17 +74,18 @@ def check(label, got, want):
         print(f"  ok   {label}")
 
 
-# --- Part 1: it REFUSES every hostile shape ---------------------------------------
-print("Part 1 -- hostile file lists are refused")
+# --- Part 1: it REFUSES the shapes that can escape the download dir, and packs with
+# nothing to file ---------------------------------------------------------------
+print("Part 1 -- traversal, absolute paths, and executable-only packs are refused")
 HOSTILE = {
-    "parent traversal":      ["../../../../etc/passwd"],
-    "traversal mid-path":    ["Show/../../../evil.mkv"],
-    "absolute path":         ["/etc/passwd"],
-    "windows exe":           ["Show/S01E01.mkv", "Show/setup.exe"],
-    "shell script":          ["Show/S01E01.mkv", "Show/install.sh"],
-    "disk image":            ["Show/reader.dmg"],
-    "javascript":            ["Comic/v01.cbz", "Comic/payload.js"],
-    "shortcut":              ["Show/open.lnk"],
+    "parent traversal":       ["../../../../etc/passwd"],
+    "traversal mid-path":     ["Show/../../../evil.mkv"],
+    "absolute path":          ["/etc/passwd"],
+    "absolute path + media":  ["/etc/passwd", "Show/S01E01.mkv"],
+    "executable only":        ["Show/setup.exe"],
+    "disk image only":        ["Show/reader.dmg"],
+    "shortcut only":          ["Show/open.lnk"],
+    "executables + nfo only": ["Show/setup.exe", "Show/release.nfo"],
 }
 with tempfile.TemporaryDirectory() as td:
     for label, paths in HOSTILE.items():
@@ -94,13 +99,19 @@ with tempfile.TemporaryDirectory() as td:
     check("malformed torrent", acceptance_gate.metadata_is_safe(f), False)
     check("missing file", acceptance_gate.metadata_is_safe(Path(td) / "nope.torrent"), False)
 
-# --- Part 2: it ACCEPTS ordinary media, including every real .torrent on disk -----
-print("\nPart 2 -- ordinary media is accepted (the check can say yes)")
+# --- Part 2: it ACCEPTS ordinary media, executable helpers beside media, and every
+# real .torrent on disk ---------------------------------------------------------
+print("\nPart 2 -- ordinary media (with or without executable helpers) is accepted")
 BENIGN = {
     "show pack":     ["Show/Season 01/Show - S01E01.mkv", "Show/Season 01/Show - S01E02.mkv"],
     "manga volumes": ["Manga/Manga v01.cbz", "Manga/Manga v02.cbz"],
     "movie + subs":  ["Movie (2001)/Movie.mkv", "Movie (2001)/Movie.srt"],
     "with nfo":      ["Show/S01E01.mkv", "Show/S01E01.nfo"],
+    "media + windows exe":   ["Show/S01E01.mkv", "Show/setup.exe"],
+    "media + shell script":  ["Show/S01E01.mkv", "Show/Remove-Dub.sh"],
+    "media + batch switcher": ["Show/S01E01.mkv", "Show/Switch-to-Sub.bat"],
+    "comic + javascript":    ["Comic/v01.cbz", "Comic/payload.js"],
+    "movie + disk image":    ["Movie/Movie.mkv", "Movie/bonus.dmg"],
 }
 with tempfile.TemporaryDirectory() as td:
     for label, paths in BENIGN.items():

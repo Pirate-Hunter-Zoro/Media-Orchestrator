@@ -157,18 +157,26 @@ def liveness():
     return acceptance.liveness(_STATE_DIR)
 
 
-# A `.torrent` whose METADATA is hostile -- a path-traversal or absolute path, or an
-# executable rather than media -- must never be added. This gate lived ONLY in the
-# searcher (`searcher.torrent_metadata_sane`), which ran it on every discovered drop. The
-# searcher was removed on 2026-09-10 and hand-dropping is now the fleet's ONLY admission
-# path, so deleting the searcher without porting this would have taken the check away from
-# the one route that still admits anything -- the §4.22 failure shape exactly (a gate on
-# one of several paths, one traffic shift from dark), with the traffic already shifted.
+# A `.torrent` whose METADATA is hostile -- a path-traversal or an absolute path -- must
+# never be added. This gate lived ONLY in the searcher (`searcher.torrent_metadata_sane`),
+# which ran it on every discovered drop. The searcher was removed on 2026-09-10 and
+# hand-dropping is now the fleet's ONLY admission path, so deleting the searcher without
+# porting this would have taken the check away from the one route that still admits
+# anything -- the §4.22 failure shape exactly (a gate on one of several paths, one traffic
+# shift from dark), with the traffic already shifted.
 #
 # It is a SAFETY refusal, not a relevance one, so it is judged before the acceptance gate
 # and cannot be softened to UNKNOWN: "I could not tell whether this is hostile" is not a
 # reason to add it. qBittorrent sanitises paths too; this refuses before it is ever asked.
-_DANGEROUS_EXTS = {
+#
+# EXECUTABLES ARE NOT A REFUSAL ON THEIR OWN (owner instruction, 2026-10-03): "just
+# because the torrent has such a file doesn't mean we need to execute it." The pipeline
+# never runs a release's helper files -- plan-coverage files the media and ignores the
+# rest -- so `Remove-Dub.bat` or a bundled `mkvmerge.exe` beside the episodes is clutter,
+# not a hazard. What still refuses is a torrent whose ONLY files are executables: it has
+# nothing the fleet wants to file, so admitting it downloads a payload for no reason. The
+# owner cannot re-create those releases, so this list must not refuse real media packs.
+_EXECUTABLE_EXTS = {
     ".exe", ".scr", ".bat", ".cmd", ".com", ".msi", ".dmg", ".app",
     ".apk", ".deb", ".rpm", ".js", ".vbs", ".ps1", ".sh", ".pif",
     ".jar", ".lnk", ".hta",
@@ -178,8 +186,14 @@ _DANGEROUS_EXTS = {
 def metadata_is_safe(torrent_path):
     """True if a `.torrent`'s file list is safe to hand to qBittorrent.
 
-    Relative paths only (no traversal, no absolute), and no executable extension. A
-    malformed or unreadable `.torrent` is False -- refusing an unreadable file costs the
+    ALWAYS refused: a path traversal or an absolute path -- the two shapes that can write
+    outside the download directory, whatever the file is. Executable files are tolerated
+    when the torrent also carries media the fleet files (`config.DIRECT_INGEST_EXTENSIONS`
+    -- video, comics, archives converted to comics, e-books); a pack of ONLY executables
+    is refused. A torrent with no executables passes as it always did, so this change can
+    only ADMIT more, never refuse more.
+
+    A malformed or unreadable `.torrent` is False -- refusing an unreadable file costs the
     owner a re-drop, while admitting one costs whatever it contains.
 
     Reads the file list through `file_names_from_torrent`, so this and the acceptance gate
@@ -190,15 +204,20 @@ def metadata_is_safe(torrent_path):
     names = file_names_from_torrent(torrent_path)
     if not names:
         return False
+    has_executable = False
+    has_wanted = False
     for n in names:
         parts = n.replace("\\", "/").split("/")
         if parts and parts[0] == "":              # absolute path
             return False
         if ".." in parts:                          # traversal
             return False
-        if os.path.splitext(n)[1].lower() in _DANGEROUS_EXTS:
-            return False
-    return True
+        ext = os.path.splitext(n)[1].lower()
+        if ext in _EXECUTABLE_EXTS:
+            has_executable = True
+        elif ext in config.DIRECT_INGEST_EXTENSIONS:
+            has_wanted = True
+    return has_wanted or not has_executable
 
 
 def file_names_from_torrent(torrent_path):

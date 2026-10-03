@@ -76,12 +76,14 @@ run "acceptance gate vs. full history" \
 # asks qBittorrent to remove a torrent it never had.
 run "acceptance gate, .torrent path (both ways)" \
     env -C "$DEV/Torrent-Ingest" "$PY_INGEST" scripts/test_torrent_gate_path.py
-# A hostile `.torrent` -- traversal, absolute path, executable -- must be refused before
-# qBittorrent is asked to add it. This check lived ONLY in the searcher, which judged every
-# drop it made; the searcher was removed on 2026-09-10 and hand-dropping is the fleet's only
-# admission path, so deleting it without porting this would have taken the check away from
-# the one route that still admits anything (§4.22, with the traffic already shifted). Both
-# ways: every hostile shape refused, AND every real `.torrent` on disk still accepted.
+# A hostile `.torrent` -- traversal or an absolute path -- must be refused before
+# qBittorrent is asked to add it; executable helpers beside media are tolerated (the
+# pipeline never runs them) but an executable-only pack has nothing to file and is
+# refused. This check lived ONLY in the searcher, which judged every drop it made; the
+# searcher was removed on 2026-09-10 and hand-dropping is the fleet's only admission path,
+# so deleting it without porting this would have taken the check away from the one route
+# that still admits anything (§4.22, with the traffic already shifted). Both ways: every
+# hostile shape refused, AND every real `.torrent` on disk still accepted.
 run "hostile .torrent metadata refused (both ways)" \
     env -C "$DEV/Torrent-Ingest" "$PY_INGEST" scripts/test_torrent_metadata_safety.py
 # A cache can serve a `.torrent` cut short. The searcher used to notice and write a
