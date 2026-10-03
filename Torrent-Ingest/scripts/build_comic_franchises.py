@@ -13,17 +13,33 @@ WHY THIS EXISTS
 
       1. THE LIBRARY ITSELF. Sibling top-level folders sharing a long name prefix are a
          franchise sitting flat -- that is a measurement of what is on disk, not a guess.
+         The shelf is read as the UNION of the SSD walk and Media-Syncer's remote
+         inventory, so a series whose local copy is fully evicted still participates.
       2. ANILIST (free, key-less, no account). It confirms the group really is one
          franchise and contributes members the library does not own yet, so the table also
          places a spin-off's FIRST volume correctly (§4.40).
+
+    A SECOND DISK SHAPE, added 2026-10-03: one folder's WHOLE name is the leading words
+    of another -- `Citrus` + `Citrus+`, `Berserk` + `Berserk of Gluttony`. A one-word
+    prefix is too weak to propose on its own (the second pair is two different series),
+    so these are proposed ONLY when AniList's own relations confirm the pair (SEQUEL,
+    PREQUEL, SIDE_STORY, SPIN_OFF, PARENT). That is how the Citrus row the owner had to
+    report got missed: the old prefix rule required two words and nine characters, and
+    `normalize_folder_name` deleted the trailing `+` anyway.
 
     Nothing here is a model call, so it cannot hallucinate a title or cost anything. Run it
     again whenever the library grows; it prints Python ready to paste into config.py, and
     prints ONLY groups that are not already in the table.
 
+    A THIRD SHAPE, same day: two folders with NO shared prefix can still be one
+    franchise -- `Inuyasha` + `Yashahime - Princess Half-Demon`, a parent series and its
+    sequel. `--relations` scans every un-tabled top-level folder's AniList relations for
+    exactly this, so it is a repeatable audit rather than a one-off discovery.
+
 USAGE
     python3 scripts/build_comic_franchises.py            # propose rows
     python3 scripts/build_comic_franchises.py --no-net   # library evidence only
+    python3 scripts/build_comic_franchises.py --relations  # + AniList relation pairs
 """
 from __future__ import annotations
 
@@ -51,6 +67,19 @@ query($s:String!,$p:Int!){
     media(search:$s, type:MANGA, sort:START_DATE){ format title{romaji english} }
   }
 }"""
+# AniList relations that mean "another series in the same franchise". ALTERNATIVE and
+# ADAPTATION are deliberately absent: they are the same work re-told, not a spin-off a
+# franchise master should collect.
+_RELATION_QUERY = """
+query($s:String!){
+  Page(page:1, perPage:12){
+    media(search:$s, type:MANGA, sort:SEARCH_MATCH){
+      title{romaji english}
+      relations{ edges{ relationType node{ type title{romaji english} } } }
+    }
+  }
+}"""
+_FRANCHISE_RELATIONS = {"SEQUEL", "PREQUEL", "SIDE_STORY", "SPIN_OFF", "PARENT"}
 
 # A prefix has to be substantial before it means "franchise". "The" and "My" are not
 # franchises; three words or fifteen characters is where a shared prefix stops being a
@@ -70,6 +99,30 @@ def _series_folders(root: Path):
                       if d.is_dir() and not d.name.startswith("."))
     except OSError:
         return []
+
+
+def _inventory_folders(kind: str):
+    """Top-level series folder NAMES the syncer's inventory records, SSD copy or not.
+
+    THE DISK WALK IS THE SUBSET, THE INVENTORY IS THE WHOLE: a cold manga is evicted to
+    the MEGA pool and its local folder can be empty, but it still exists as a series the
+    table has to reason about. Reading only `~/Media` hid Inuyasha, Ranma ½, Sailor Moon
+    and Slam Dunk from this tool entirely. Unreadable inventory -> [], never a crash.
+    """
+    try:
+        inv = json.loads(config.MEDIA_SYNCER_INVENTORY.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = set()
+    for rel in inv:
+        parts = Path(str(rel)).parts
+        if not parts or parts[0] != "Comics":
+            continue
+        if kind == "manga" and len(parts) >= 3 and parts[1] == "Manga":
+            out.add(parts[2])
+        elif kind == "western" and len(parts) >= 2 and parts[1] != "Manga":
+            out.add(parts[1])
+    return sorted(out)
 
 
 # A COLORED edition is not a spin-off, it is the same series in colour, and the library
@@ -148,6 +201,119 @@ def _prefix_groups(names):
     return {k: v for k, v in groups.items() if k not in owned}
 
 
+def _weak_prefix_pairs(names):
+    """[(master, member)] where one folder's WHOLE name is the leading words of another.
+
+    The strong prefix rule above needs two shared words; a sequel like `Citrus+` shares
+    only one, so it needs confirmation. Confirmation is AniList's own relation graph
+    (`_relation_confirmed`), never a marker-word list here: "Berserk of Gluttony" starts
+    with "Berserk" and must NOT group with it.
+    """
+    norm = {n: _norm(n) for n in names}
+    pairs = set()
+    for a in names:
+        for b in names:
+            if a == b:
+                continue
+            na, nb = norm[a], norm[b]
+            if not na or not nb or na == nb:
+                continue
+            if not (nb.startswith(na + " ") or na.startswith(nb + " ")):
+                continue
+            master, member = (a, b) if len(na) < len(nb) else (b, a)
+            if len(_norm(master)) < 3 or _EDITION_RE.search(_norm(master)):
+                continue
+            tail = _norm(member)[len(_norm(master)):].strip()
+            if _EDITION_RE.search(tail):
+                continue
+            pairs.add((master, member))
+    return sorted(pairs)
+
+
+def _anilist_related(term: str):
+    """[(relation_type, title)] off the AniList entry whose title matches `term` exactly.
+
+    [] on any failure or when nothing matches. Duplicated titles (romaji/english) are
+    de-duplicated by the caller's normalized comparison.
+    """
+    body = json.dumps({"query": _RELATION_QUERY, "variables": {"s": term}}).encode()
+    req = urllib.request.Request(
+        ANILIST, data=body,
+        headers={"Content-Type": "application/json", "Accept": "application/json",
+                 "User-Agent": UA})
+    data = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:      # noqa: S310
+                data = json.loads(resp.read().decode("utf-8", "replace"))
+            break
+        except urllib.error.HTTPError as exc:
+            # A 429 is the normal state of a full-library scan; back off instead of
+            # silently returning "no relations" (a throttled scan that reads as clean is
+            # exactly how the 2026-10-03 audit first reported zero splits).
+            if exc.code == 429 and attempt < 3:
+                time.sleep(15 * (attempt + 1))
+                continue
+            return []
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+            return []
+    if data is None:
+        return []
+    want = _norm(term)
+    for m in ((data.get("data") or {}).get("Page") or {}).get("media") or []:
+        t = m.get("title") or {}
+        if not any(n and _norm(n) == want for n in (t.get("english"), t.get("romaji"))):
+            continue
+        out = []
+        for e in ((m.get("relations") or {}).get("edges") or []):
+            node = e.get("node") or {}
+            if node.get("type") != "MANGA":
+                continue
+            nt = node.get("title") or {}
+            for n2 in (nt.get("english"), nt.get("romaji")):
+                if n2:
+                    out.append((e.get("relationType"), n2))
+                    break
+        return out
+    return []
+
+
+def _relation_confirmed(master: str, member: str):
+    """True when AniList's own relations say `member` is a franchise relative of `master`."""
+    for search, other in ((master, member), (member, master)):
+        for relation, title in _anilist_related(search):
+            if relation in _FRANCHISE_RELATIONS and _norm(title) == _norm(other):
+                return True
+    return False
+
+
+def _relation_pairs(names, known_norms=None, pace=2.5):
+    """{master: [members]} for franchise relatives that share NO title prefix.
+
+    One AniList request per un-tabled top-level folder (pace-limited -- AniList 429s
+    under a request per second). Only relation types that mean "another series" count,
+    both directions are checked, and a transport failure simply contributes nothing.
+    """
+    by_norm = {}
+    for n in names:
+        by_norm.setdefault(_norm(n), n)
+    pairs: dict = {}
+    for n in names:
+        if known_norms and _norm(n) in known_norms:
+            continue
+        for relation, title in _anilist_related(n):
+            if relation not in _FRANCHISE_RELATIONS:
+                continue
+            other = by_norm.get(_norm(title))
+            if not other or _norm(other) == _norm(n):
+                continue
+            master, member = ((n, other) if len(_norm(n)) <= len(_norm(other))
+                              else (other, n))
+            pairs.setdefault(master, set()).add(member)
+        time.sleep(pace)
+    return {m: sorted(ms) for m, ms in pairs.items()}
+
+
 def _anilist_members(term: str):
     """Every manga title AniList knows whose search matches `term`. [] on any failure."""
     seen, page = [], 1
@@ -188,7 +354,9 @@ def _row(master: str, members, kind: str) -> str:
     """The config.py literal for one franchise."""
     entries = {_norm(master): master}
     for m in members:
-        sub = m[len(master):].strip(" -:") if _norm(m).startswith(_norm(master)) else m
+        # Strip the master prefix for the sub-folder default, but a tail that is ONLY a
+        # marker (`+` from `Citrus+`) is not a folder name: keep the full member name.
+        sub = m[len(master):].strip(" -:+") if _norm(m).startswith(_norm(master)) else m
         entries[_norm(m)] = sub or m
     # json.dumps, not an f-string with literal quotes: a real title can contain one.
     # `"The Seven Deadly Sins" - Pilot Story` is an actual AniList entry, and interpolating
@@ -200,35 +368,87 @@ def _row(master: str, members, kind: str) -> str:
             f'        "members": {{\n{body}\n        }},\n    }},')
 
 
+def _anilist_extras(master, members):
+    """AniList titles that start with the master and are not already in `members`."""
+    return [m for m in _anilist_members(master)
+            if _norm(m) != _norm(master)
+            and not any(_norm(m) == _norm(x) for x in members)]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-net", action="store_true",
                     help="use the library's own folders only; skip AniList")
+    ap.add_argument("--relations", action="store_true",
+                    help="also scan AniList relations for franchises with NO shared "
+                         "title prefix (slow: one request per un-tabled top-level folder)")
     args = ap.parse_args()
 
     known = _known_masters()
     proposals = []
+    weak_hints = []
     for kind, root in (("manga", config.COMICS_ROOT / "Manga"),
                        ("western", config.COMICS_ROOT)):
-        names = [n for n in _series_folders(root) if kind == "manga" or n != "Manga"]
-        for master, members in sorted(_prefix_groups(names).items()):
+        names = sorted(
+            {n for n in _series_folders(root) if kind == "manga" or n != "Manga"}
+            | set(_inventory_folders(kind)))
+        groups = _prefix_groups(names)
+        grouped = {_norm(master) for master in groups}
+        grouped |= {_norm(m) for members in groups.values() for m in members}
+        for master, members in sorted(groups.items()):
             if _norm(master) in known:
                 continue
             if len(members) + 1 < MIN_GROUP + 1:
                 continue
-            extra = [] if args.no_net else [
-                m for m in _anilist_members(master)
-                if _norm(m) != _norm(master)
-                and not any(_norm(m) == _norm(x) for x in members)]
-            proposals.append((kind, master, members, extra))
+            extra = [] if args.no_net else _anilist_extras(master, members)
+            proposals.append((kind, master, members, extra, "shared prefix"))
 
+        weak = {}
+        for master, member in _weak_prefix_pairs(names):
+            if (_norm(master) in known or _norm(member) in known
+                    or _norm(master) in grouped or _norm(member) in grouped):
+                continue
+            weak.setdefault(master, []).append(member)
+        for master, members in sorted(weak.items()):
+            if args.no_net:
+                weak_hints.append((kind, master, members))
+                continue
+            confirmed = [m for m in members if _relation_confirmed(master, m)]
+            if not confirmed:
+                continue
+            extra = _anilist_extras(master, confirmed)
+            proposals.append((kind, master, confirmed, extra, "AniList relation"))
+            grouped.add(_norm(master))
+
+        if args.relations and not args.no_net:
+            # No shared prefix at all (`Inuyasha` + `Yashahime - Princess Half-Demon`):
+            # only the relation graph can see these, and it is worth the slow scan when
+            # auditing the shelf -- run this after a big acquisition wave.
+            for master, members in sorted(_relation_pairs(names, known).items()):
+                if _norm(master) in known or _norm(master) in grouped:
+                    continue
+                members = [m for m in members
+                           if _norm(m) not in known and _norm(m) not in grouped]
+                if not members:
+                    continue
+                extra = _anilist_extras(master, members)
+                proposals.append((kind, master, members, extra, "AniList relation"))
+                grouped.add(_norm(master))
+                grouped.update(_norm(m) for m in members)
+
+    if weak_hints:
+        print("# candidate weak-prefix pairs -- one shared word, so they are NOT proposed")
+        print("# without AniList confirmation. Re-run without --no-net to check each:")
+        for kind, master, members in weak_hints:
+            print(f"#   {master} ({kind})  ?<-  {', '.join(members)}")
+        print()
     if not proposals:
         print("# no new franchise groups found -- the table already covers the library")
         return
     print("# Generated by scripts/build_comic_franchises.py from the library's own folder")
     print("# layout plus AniList. Re-run it after the library grows; do not hand-edit.")
-    for kind, master, members, extra in proposals:
-        print(f"\n# {master} ({kind}): {len(members)} sibling folder(s) on disk"
+    for kind, master, members, extra, why in proposals:
+        print(f"\n# {master} ({kind}): {why}; {len(members)} folder(s) on disk"
               + (f", {len(extra)} more known to AniList" if extra else ""))
         for m in members:
             print(f"#     on disk: {m}")

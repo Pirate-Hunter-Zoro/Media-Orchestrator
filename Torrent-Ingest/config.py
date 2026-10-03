@@ -330,6 +330,21 @@ COMIC_FRANCHISES = [
         },
     },
     {
+        # Citrus+ is the SEQUEL of Citrus, and the generator missed the pair for a whole
+        # release cycle (owner report 2026-10-03): `normalize_folder_name` deleted the
+        # trailing '+', so `Citrus+` and `Citrus` collapsed to the same key and the
+        # member was unrepresentable. The normalization now keeps it as "plus", and the
+        # relation-confirmed weak-prefix detector in `build_comic_franchises.py` finds
+        # this shape from AniList's own SEQUEL/PREQUEL evidence. Values are the live
+        # folder names, so `Comics/Manga/Citrus/Citrus+/` is where a drop must land.
+        "name": "Citrus",
+        "kind": "manga",
+        "members": {
+            "citrus": "Citrus",
+            "citrus plus": "Citrus+",
+        },
+    },
+    {
         "name": "Ashita no Joe",
         "kind": "manga",
         "members": {
@@ -428,6 +443,20 @@ COMIC_FRANCHISES = [
         "members": {
             "ive been killing slimes for 300 years and maxed out my level": "I've Been Killing Slimes for 300 Years and Maxed Out My Level",
             "ive been killing slimes for 300 years and maxed out my level spin off the red dragon academy for girls": "Spin-off - The Red Dragon Academy for Girls",
+        },
+    },
+    {
+        # Generated 2026-10-03 by `build_comic_franchises.py --relations`: Inuyasha and
+        # Yashahime share NO title prefix, so only AniList's own SEQUEL/PREQUEL relations
+        # can tie them together -- and they were sitting as two top-level folders. The
+        # same audit class as Citrus/Citrus+ (one parent, one sequel, two roots); the
+        # `--relations` scan is how the next one is found instead of reported.
+        "name": "Inuyasha",
+        "kind": "manga",
+        "members": {
+            "inuyasha": "Inuyasha",
+            "yashahime princess half demon": "Yashahime - Princess Half-Demon",
+            "inuyasha special": "Special",
         },
     },
     {

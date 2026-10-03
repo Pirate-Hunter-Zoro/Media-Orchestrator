@@ -371,6 +371,14 @@ run "manga chapters yield to volumes (both ways)" \
 # repairable. This is the guard that makes "One Piece v1176 should be c1176" a fact.
 run "manga tiers are computed from the archives (both ways)" \
     env -C "$DEV/Torrent-Ingest" "$PY_INGEST" scripts/test_manga_mislabels.py
+# Citrus and Citrus+ shipped as two top-level folders while Akame ga KILL! + ZERO were
+# correctly nested (owner report 2026-10-03). A trailing '+' is part of the title, not
+# punctuation; the Citrus row resolves to its member folder; resolution prefers the
+# folder actually on the shelf (Akame ga KILL! ZERO); and validate_plan now refuses a
+# table-known member filed outside its master. The generator detects this weak prefix
+# shape and proposes it only on AniList relation evidence.
+run "franchise membership is computed and binding (both ways)" \
+    env -C "$DEV/Torrent-Ingest" "$PY_INGEST" scripts/test_comic_franchises.py
 # A release that names every part of a story with the same `SxxEyy` (the SERIAL) was
 # misfiled twice by two different models: once on the original ingest, then again on the
 # re-fetch waves (28 files). The harness now COMPUTES the broadcast numbers from the

@@ -191,13 +191,15 @@ Comics / manga (served by YACReader — much simpler, metadata-insensitive):
   top-level `Comics/` folders instead of one `Comics/Invincible/`.)
 
 - **Distinct series each get their OWN folder — never merge two series into one.**
-  `Akame ga Kill!` and `Akame ga KILL! ZERO` are TWO series (a parent and its
-  prequel), each with its own independent volume numbering, and must be TWO
-  folders under `Comics/Manga/` (`Comics/Manga/Akame ga Kill/` and
-  `Comics/Manga/Akame ga Kill Zero/`). Do not lump a sub-series into its parent's
-  folder just because its title *contains* the parent's name — a "v01" of each is
-  a different book, so their numbering stays separate and each folder starts at
-  its own v01.
+  `Akame ga KILL!` and `Akame ga KILL! ZERO` are TWO series (a parent and its
+  prequel), each with its own independent volume numbering, and each gets its own
+  sub-folder under the franchise master the digest lists — separate sibling
+  folders, never one folder with two numbering runs. Do not lump a sub-series into
+  its parent's folder just because its title *contains* the parent's name — a "v01"
+  of each is a different book, so their numbering stays separate and each folder
+  starts at its own v01. A sequel whose title adds only punctuation or one word
+  (`Citrus` and `Citrus+`) is still a second series with its own v01, not a
+  continuation of the parent's numbering.
 
 - **Prefer the best edition and the best definition.** When the same material
   exists at multiple tiers, the library wants the best: an **Omnibus** over an

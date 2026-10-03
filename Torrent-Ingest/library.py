@@ -85,6 +85,12 @@ def normalize_folder_name(name):
     t = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode("ascii")
     t = t.lower()
     t = t.replace("'", "")                      # "it's" == "its" == "it’s"
+    # A TRAILING '+' is part of the title, not punctuation. `Citrus+` is the sequel of
+    # `Citrus`; the general cleanup below deletes the sign, which mapped both to "citrus"
+    # -- the sequel became unrepresentable in the franchise table and `Citrus+` resolved
+    # onto the original's folder. Keep it as the word "plus". Only a trailing sign:
+    # `3.0+1.0` and `Undead + Unluck` carry theirs mid-title and are untouched.
+    t = re.sub(r"\+\s*$", " plus", t)
     t = re.sub(r"\(\s*(?:19|20)\d{2}\s*\)", " ", t)
     t = re.sub(r"[^a-z0-9]+", " ", t)
     return re.sub(r"\s+", " ", t).strip()
@@ -105,6 +111,40 @@ def resolve_show_folder(name):
     except OSError:
         return None
     return hits[0] if len(hits) == 1 else None
+
+
+def _member_dirs(base):
+    """`{normalized folder name: actual folder Path}` for directories under a master.
+
+    A name with more than one folder maps to None (ambiguous -- MEGA has duplicated
+    sibling directories before, and a guess between them is worse than no answer).
+
+    One walk per master, shared by `resolve_comic_folder` and `_franchise_block`. It
+    exists because a table member VALUE is a canonical default while the live folder may
+    be named for the whole series: the Akame ga KILL! row says sub-folder `ZERO` and the
+    shelf holds `Akame ga KILL! ZERO` (the layout the owner approved). Resolution must
+    see the folder that is really there, or the next volume creates `ZERO/` beside it
+    and splits the series -- the 2026-10-03 Citrus+ class.
+    """
+    dirs: dict = {}
+    dup: set = set()
+    try:
+        for d in Path(base).rglob("*"):
+            try:
+                if not d.is_dir() or d.name.startswith("."):
+                    continue
+            except OSError:
+                continue
+            key = normalize_folder_name(d.name)
+            if key in dirs:
+                dup.add(key)
+            else:
+                dirs[key] = d
+    except OSError:
+        pass
+    for key in dup:
+        dirs[key] = None
+    return dirs
 
 
 def resolve_comic_folder(name, kind, colored=False):
@@ -167,13 +207,15 @@ def resolve_comic_folder(name, kind, colored=False):
             except OSError:
                 pass
         if base.is_dir():
-            hits = [d for d in base.rglob("*")
-                    if d.is_dir() and not d.name.startswith(".")
-                    and normalize_folder_name(d.name) == leaf_key]
-            if len(hits) == 1:
-                return hits[0]          # an existing folder, wherever it sits under master
-            if len(hits) > 1:
-                return None             # ambiguous on disk: let the AI decide (gate (a))
+            # Canonical sub-folder first, then the full member name. A live folder is
+            # often named for the whole series (`Akame ga KILL! ZERO`, `Citrus+`) while
+            # the table's value is the short suffix; matching only the suffix returned
+            # the canonical path and split the series on the next arrival.
+            dirs = _member_dirs(base)
+            for alias in (leaf_key, normalize_folder_name(name),
+                          normalize_folder_name(series)):
+                if alias and alias in dirs:
+                    return dirs[alias]  # a Path, or None when the name is ambiguous
         return base / fr[1]             # the member's canonical home, to be created
     base = config.COMICS_ROOT / ("Manga" if kind == "manga" else "")
     if not base.is_dir():
@@ -244,10 +286,25 @@ def _franchise_block():
     lines = ["COMIC/MANGA FRANCHISES (related series nest under ONE master folder):"]
     for fr in config.COMIC_FRANCHISES:
         root = ("Comics/Manga/" if fr["kind"] == "manga" else "Comics/") + fr["name"]
+        # Show the folder that is ACTUALLY on the shelf when one exists, not just the
+        # table's canonical default. The shelf sometimes names a member folder for the
+        # whole series (`Akame ga KILL! ZERO`, `Fairy Tail - 100 Years Quest`); telling
+        # the model the short suffix there would have it create a second folder and
+        # split the series -- the fault this block exists to prevent.
+        base = config.COMICS_ROOT / (("Manga/" if fr["kind"] == "manga" else "")
+                                     + fr["name"])
+        dirs = _member_dirs(base) if base.is_dir() else {}
         parts = []
         for member, sub in (fr["members"] or {}).items():
-            if sub and sub not in parts:
-                parts.append(sub)
+            if not sub:
+                continue
+            shown = sub
+            for alias in (normalize_folder_name(sub), normalize_folder_name(member)):
+                if alias and dirs.get(alias):
+                    shown = dirs[alias].name
+                    break
+            if shown not in parts:
+                parts.append(shown)
         lines.append(f"  - {root}/  <- {', '.join(parts)}")
     lines.append("  A drop that matches one of these series MUST be filed under its master "
                  "folder AND inside the named sub-folder shown, NEVER as a top-level "
@@ -2007,6 +2064,7 @@ def validate_plan(plan, content_root, sibling_seasons=None, serial_map=None,
                     f"destination. File it at the computed slot.")
 
     _reject_comic_at_franchise_root(files)
+    _reject_franchise_member_outside_master(files)
     _reject_manga_mislabels(plan, files)
     _reject_title_numbering(files, title_map, identity_map)
     _reject_same_season_episode_shift(files, episode_agreement)
@@ -2826,6 +2884,52 @@ def _reject_comic_at_franchise_root(files):
                 f"shared '{fr['name']} vNN' namespace that belongs to no series, where it "
                 f"collides with unrelated books. Put it in the sub-folder for the series "
                 f"it actually is, creating a new one if this series has none yet.")
+
+
+def _reject_franchise_member_outside_master(files):
+    """Refuse a comic the franchise table knows but the plan files outside its master.
+
+    THE FAULT (owner report 2026-10-03): `Citrus` and `Citrus+` were filed as two
+    top-level folders while `Akame ga KILL!` + ZERO were correctly nested. The Citrus
+    row was missing from the table; nothing else refused a top-level home for a series
+    the table DOES know. This is the backstop that makes table rows binding at plan
+    time: the model proposes, the harness disposes.
+
+    Narrow by design, like `_reject_release_identity`. It fires only when the series is
+    computable -- the source filename names a franchise member, or the destination's own
+    series folder does -- and the destination is not inside that franchise's master at
+    all. It says nothing about WHICH member sub-folder (the digest lists the live names
+    and `resolve_comic_folder` resolves them), and it fails open when no series can be
+    derived (a bare `Chapter 1133.zip` against an unrecognised folder is untouched).
+    """
+    for idx, f in enumerate(files):
+        dst_p = Path(f.get("dst_rel") or "")
+        if dst_p.parts[:1] != ("Comics",):
+            continue
+        kind = "manga" if dst_p.parts[1:2] == ("Manga",) else "comic"
+        src_name = Path(f.get("src") or "").name
+        candidates = [_series_from_comic_filename(src_name)] if src_name else []
+        if len(dst_p.parts) >= 3:
+            candidates.append(dst_p.parts[-2])      # the series folder the plan created
+        hit = None
+        for cand in candidates:
+            if cand:
+                hit = comic_franchise(cand, kind)
+                if hit is not None:
+                    break
+        if hit is None:
+            continue
+        fr, sub = hit
+        root_rel = Path("Comics") / (("Manga/" if fr["kind"] == "manga" else "")
+                                     + fr["name"])
+        if root_rel in dst_p.parents or dst_p.parent == root_rel:
+            continue                                # already inside the master
+        expected = f"{root_rel}/{sub}/" if sub else f"{root_rel}/<series>/"
+        raise PlanError(
+            f"file[{idx}] '{src_name or dst_p.name}' belongs to the franchise "
+            f"'{fr['name']}' but the plan files it at {f.get('dst_rel')!r}, outside its "
+            f"master folder. File it under {expected} -- the digest's COMIC/MANGA "
+            f"FRANCHISES block lists the sub-folder the series lives in.")
 
 
 # A filename stem that is ONLY a marker (`c1151`, `v001`, `d1078`, `c1151.5`): no

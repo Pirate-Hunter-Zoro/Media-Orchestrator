@@ -184,6 +184,39 @@ def check_manga():
         line("one edition per volume", "PASS", f"{total} volume copy(ies), one per number")
 
 
+def check_franchise_layout():
+    """No series the franchise table knows may sit as a top-level shelf folder.
+
+    THE OWNER'S FAULT (2026-10-03): `Citrus` and `Citrus+` shipped as two top-level
+    folders while `Akame ga KILL!` + ZERO were correctly nested. This is that invariant
+    over the whole shelf, computed from the table and the owned paths -- so the report
+    sees the same fault on ANY title, not just the one the owner happened to notice.
+    """
+    owned = _manga_series()
+    if not owned:
+        line("franchise layout", "SKIP", "shelf not enumerable")
+        return
+    splits = []
+    for files in owned.values():
+        for rel in files:
+            parts = Path(rel).parts
+            if len(parts) < 2 or parts[0] != "Comics":
+                continue
+            if len(parts) >= 3 and parts[1] == "Manga":
+                top, kind = parts[2], "manga"
+            else:
+                top, kind = parts[1], "comic"
+            hit = library.comic_franchise(top, kind)
+            if hit and (library.normalize_folder_name(hit[0]["name"])
+                        != library.normalize_folder_name(top)):
+                splits.append(f"{top} (belongs under {hit[0]['name']})")
+    if splits:
+        line("franchise layout", "FAIL",
+             f"{len(splits)} split series: " + "; ".join(sorted(set(splits))[:3]))
+    else:
+        line("franchise layout", "PASS")
+
+
 def _title_key(text):
     return re.sub(r"[^a-z0-9]+", "", str(text or "").lower())
 
@@ -281,6 +314,7 @@ def check_large_releases():
 def main() -> int:
     check_sidecar_identity()
     check_manga()
+    check_franchise_layout()
     check_large_releases()
     print()
     bad = [r for r in results if r[1] == "FAIL"]
